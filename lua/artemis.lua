@@ -1,29 +1,16 @@
 local M = {}
 
-M.command = vim.command or vim.cmd
-M.eval = vim.eval or vim.api.nvim_eval
-
-M.cast = setmetatable({}, {
-  __index = function(_, key)
-    if key == 'dict' or key == 'list' or key == 'blob' then
-      return vim[key] or function(x) return x end
-    else
-      throw('Invalid cast type: ' .. key)
-    end
-  end,
-  __call = function(cast, t)
-    if vim.fn.has('nvim') == 0 and type(t) == 'table' then
-      local assocp = false
-      for k, v in pairs(t) do
-        assocp = assocp or type(k) ~= 'number'
-        t[k] = cast(v)
-      end
-      return assocp and cast.dict(t) or cast.list(t)
-    else
-      return t
-    end
+function M.cast(t)
+  if vim.fn.has('nvim') > 0 or type(t) ~= 'table' then
+    return t
   end
-})
+  local assocp = false
+  for k, v in pairs(t) do
+    assocp = assocp or type(k) ~= 'number'
+    t[k] = M.cast(v)
+  end
+  return assocp and vim.dict(t) or vim.list(t)
+end
 
 M.keymap = vim.keymap or {
   cmd = {},
@@ -31,34 +18,38 @@ M.keymap = vim.keymap or {
     local args = {...}
     local opts = args[1] or {}
     for _, mode in pairs(type(mode) == 'table' and mode or { mode }) do
-      local c = mode .. 'unmap'
+      local cmd = mode .. 'unmap'
+      local args = {}
       if opts.buffer then
-        c = c .. ' <buffer> '
+        table.insert(args, '<buffer>')
       end
-      M.command(c .. ' ' .. lhs)
+      table.insert(args, lhs)
+      M.cmd({cmd = cmd, args = args})
     end
   end,
   set = function(mode, lhs, rhs, ...)
     local args = {...}
     local opts = args[1] or {}
     for _, mode in pairs(type(mode) == 'table' and mode or { mode }) do
-      local c = mode
+      local cmd = mode
       if not opts.remap or opts.noremap then
-        c = c .. 'nore'
+        cmd = cmd .. 'nore'
       end
-      c = c .. 'map'
+      cmd = cmd .. 'map'
+      local args = {}
       for _, opt in pairs({ 'buffer', 'expr', 'nowait', 'silent', 'unique' }) do
         if opts[opt] then
-          c = c .. ' <' .. opt .. '> '
+          table.insert(args, '<' .. opt .. '>')
         end
       end
+      table.insert(args, lhs)
       if type(lhs) == 'function' then
         keymap.cmd[lhs] = rhs
-        c = c .. ' ' .. lhs .. ' ' .. 'lua require"artemis".keymap.cmd[ [=['..lhs..']=] ]()'
+        table.insert(args, 'lua require"artemis".keymap.cmd[ [=['..lhs..']=] ]()')
       else
-        c = c .. ' ' .. lhs .. ' ' .. rhs
+        table.insert(args, rhs)
       end
-      M.command(c)
+      M.cmd({cmd = cmd, args = args})
     end
   end
 }
@@ -68,21 +59,71 @@ local vars = setmetatable({}, {
     local prefix = scope == 'o' and '&' or (scope .. ':')
     return setmetatable({}, {
       __index = function(_, name)
-        return M.eval(prefix .. name)
+        return vim.eval(prefix .. name)
       end,
       __newindex = function(_, name, value)
         local str = vim.fn.string(M.cast(value))
-        M.command('let ' .. prefix .. name .. ' = ' .. str)
+        vim.command('let ' .. prefix .. name .. ' = ' .. str)
       end
     })
   end
 })
-M.g = vim.g or vars.g
-M.t = vim.t or vars.t
-M.b = vim.b or vars.b
-M.v = vim.v or vars.v
-M.w = vim.w or vars.w
-M.o = vim.o or vars.o
-M.fn = vim.fn
+M.g = vim.fn.has('nvim') > 0 and vim.g or vars.g
+M.t = vim.fn.has('nvim') > 0 and vim.t or vars.t
+M.b = vim.fn.has('nvim') > 0 and vim.b or vars.b
+M.v = vim.fn.has('nvim') > 0 and vim.v or vars.v
+M.w = vim.fn.has('nvim') > 0 and vim.w or vars.w
+M.o = vim.fn.has('nvim') > 0 and vim.o or vars.o
+
+local fn = setmetatable({}, {
+  __index = function(_, name)
+    return function(...)
+      local str = ''
+      for i, arg in ipairs({...}) do
+        str = str .. (i > 1 and ', ' or '') .. vim.fn.string(M.cast(arg))
+      end
+      return M.eval('function("' .. name .. '")(' .. str .. ')')
+    end
+  end
+})
+
+M.fn = vim.fn.has('nvim') > 0 and vim.fn or fn
+
+M.dict = vim.dict or function(x) return x end
+M.list = vim.list or function(x) return x end
+M.blob = vim.blob or function(x) return x end
+M.eval = vim.eval or vim.api.nvim_eval
+M.cmd = vim.cmd or setmetatable({}, {
+  __call = function(cmd, t) 
+    if type(t) == 'table' then
+      local c = t.cmd or t[1]
+      if t.bang then
+        c = c .. '!'
+      end
+      for i, arg in ipairs(t) do
+        if i > 1 then
+          c = c .. ' ' .. arg
+        end
+      end
+      for _, arg in pairs(t.args or {}) do
+        c = c .. ' ' .. arg
+      end
+      return cmd(c)
+    end
+    return vim.command(t)
+  end,
+  __index = function(cmd, name)
+    return function(t)
+      if type(t) == 'table' then
+        local u = { cmd = name }
+        for k, v in pairs(t) do
+          u[k] = v
+        end
+        return cmd(u)
+      end
+      return vim.command(name .. ' ' .. t)
+    end
+  end
+})
 
 return M
