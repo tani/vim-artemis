@@ -1,5 +1,9 @@
 local M = {}
 
+local function generate_id()
+  return string.format('%02x', math.floor(os.clock() * 1000000))
+end
+
 function M.cast(t)
   if vim.fn.has('nvim') > 0 or type(t) ~= 'table' then
     return t
@@ -10,6 +14,51 @@ function M.cast(t)
     t[k] = M.cast(v)
   end
   return assocp and vim.dict(t) or vim.list(t)
+end
+
+M.augroup = {}
+function M.create_augroup(name, ...)
+  if vim.fn.has('nvim') > 0 then
+    return vim.api.nvim_create_augroup(name, ...)
+  end
+  local id = generate_id()
+  local opts = {}
+  local args = {...}
+  if #args > 0 then
+    opts = args[1]
+  end
+  if opts.clear then
+    vim.command('augroup ' .. name .. ' | autocmd! | augroup END')
+  else
+    vim.command('augroup ' .. name .. ' | augroup END')
+  end
+  M.augroup[id] = name
+  return id
+end
+
+M.autocmd = {}
+function M.create_autocmd(event, opts)
+  if vim.fn.has('nvim') > 0 then
+    return vim.api.nvim_create_autocmd(event, opts)
+  end
+  local id = generate_id()
+  if type(opts.group) == 'number' then
+    opts.group = M.augroup[opts.group]
+  end
+  if opts.callback then
+    if type(opts.callback) == 'function' then
+      opts.command = 'lua require("artemis").autocmd[' .. id .. '].callback()'
+    else
+      opts.command = 'call ' .. opts.callback .. '()'
+    end
+  end
+  if opts.buffer then
+    opts.bufnr = opts.buffer
+  end
+  opts.event = event
+  opts.cmd = opts.command
+  M.autocmd[id] = opts
+  return id
 end
 
 M.keymap = vim.keymap or {
