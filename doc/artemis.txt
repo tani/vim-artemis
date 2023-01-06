@@ -1,0 +1,120 @@
+artemis.txt                            Lua compatibility layer for Vim/ Neovim
+
+Description~
+    Vim-artemis is a Lua module for the compatibility between Vim and Neovim.
+    We aim at covering the Lua API for writing the Vim/ Neovim configuration
+    file in the single Lua file.
+
+Example~
+>
+     -- You can load the artemis as follows.
+     local vimx = require 'artemis'
+
+     -- You can set a value to the variable
+     vimx.g.tex_flavor = 'latex'
+
+     -- You can call Vim command naturally
+     vimx.cmd.packadd 'vim-jetpack'
+
+     require('jetpack.packer').startup(function(use)
+       use {
+         'cohama/lexima.vim',
+         config = function()
+           -- fn proxies arguments using artemis.cast
+           vimx.fn['lexima#add_rule'] {
+             at = ';->\\%#',
+             input = '\\rightarrow'
+           }
+         end
+       }
+     end)
+<
+
+API Manual~
+
+    artemis.create_augroup(name, ...)                 *artemis.create_augroup*
+        This function creates augroup named "name". Optionally, the table has
+        { clear = true }, then it removes all the registerd autocmds.
+
+    artemis.create_autocmd(event, opts)               *artemis.create_autocmd*
+        This function creates autocmd. The first argument is a string or
+        a table of string of name(s) for event such as "BufReadPre".
+        "opts" has several keys as follows:
+
+            buffer    a numeric id of buffer
+
+            pattern   a string or a table of string of pattern(s) for event.
+
+            command   a string of Vim script
+
+            group     a name or id of augroup
+
+            callback  a Lua funciton to call. Or, a string representing
+                      Vim script function to call. Note that this option will
+                      overwrites "command" option. 
+
+    artemis.keymap.del(mode, lhs, ...)                    *artemis.keymap.del*
+        This function deletes the keymap "lhs". "mode" is a string or a table
+        of string for vim mode like "n". If "..." is "{ buffer = true }",
+        then it deletes the keymap only in the current buffer.
+
+    artemis.keymap.set(mode, lhs, rhs, ...)               *artemis.keymap.set*
+        This function set the keymap "lhs" as "rhs".  "mode" is a string or
+        a table of string for vim mode like "n". "rhs" is a string of command
+        or a Lua function to call. If "..." could be a table having
+        keys of |map-arguments|.
+
+    artemis.g                                                      *artemis.g*
+    artemis.v                                                      *artemis.v*
+    artemis.b                                                      *artemis.b*
+    artemis.t                                                      *artemis.t*
+    artemis.w                                                      *artemis.w*
+    artemis.o                                                      *artemis.o*
+        These tables are corresponding to the Vim variables. For instance,
+        "g.lightline" is equivalent to "g:lightline".
+
+    artemis.fn                                                    *artemis.fn*
+        This table is corresponding to the Vim functions. Compared to
+        |if_lua.txt|, the argument will be proxied by |artemis.cast|; i.e.,
+        you do not need to cast the lua object to the vim object.
+
+    artemis.cast([table])                                       *artemis.cast*
+        This function converts the "table" to dict or list according to the
+        context. if the table has non numerical key then it will be converted
+        into dict, otherwise the table will be converted into list.
+
+    artemis.dict(table)                                         *artemis.dict*
+    artemis.list(table)                                         *artemis.list*
+    artemis.blob(string)                                        *artemis.blob*
+        These functions convert the Lua object to the specific Vim object.
+        These are convinient to convert the table having the numeric keys to
+        dict Vim object, for example.
+
+    artemis.eval(string)                                        *artemis.eval*
+        This function evaluates the string as the vim script. This is
+        equivalent to "vim.eval" for |if_lua.txt| and |vim.api.nvim_eval| for
+        Neovim.
+
+    artemis.cmd                                                  *artemis.cmd*
+        This function is inspired by |vim.cmd| for Neovim. It takes a string
+        of Vim script to execute Vim command.
+>
+            artemis.cmd("echo 'hello'")
+<
+        Moreover, this table can be used like |artemis.fn|; i.e., it takes a
+        command as a key of the table and execute command with given
+        arguments. The argument is not only a string but also a table
+        representing the list of arguments. The example usage is the follows.
+
+>
+            artemis.cmd.echo '"hello" . " world"' 
+            artemis.cmd.echo {'"hello"', '.', '" world"'}
+            artemis.cmd.echo { args = { '"hello"', '.', '" world"' } }
+            artemis.cmd { cmd = 'echo', args = { '"hello"', '.', '" world"' } }
+<
+
+Misc~
+    Author: Masaya Taniguchi
+    License: MIT
+
+vim:tw=78:ts=8:noet:ft=help:norl:
