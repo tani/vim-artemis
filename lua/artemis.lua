@@ -174,7 +174,8 @@ M.fn = setmetatable({}, {
         for i, arg in ipairs({...}) do
           table.insert(args, M.cast(arg))
         end
-        return vim.fn[fn.name](table.unpack(args))
+        local unpack = unpack or table.unpack
+        return vim.fn[fn.name](unpack(args))
       end,
       __index = function(fn, subname)
         return setmetatable(
