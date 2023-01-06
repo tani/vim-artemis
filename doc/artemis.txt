@@ -32,7 +32,7 @@ Example~
 
 API Manual~
 
-    artemis.create_augroup(name, ...)                 *artemis.create_augroup*
+    artemis.create_augroup(name, opts)                *artemis.create_augroup*
         This function creates augroup named "name". Optionally, the table has
         { clear = true }, then it removes all the registerd autocmds.
 
@@ -53,15 +53,15 @@ API Manual~
                       Vim script function to call. Note that this option will
                       overwrites "command" option. 
 
-    artemis.keymap.del(mode, lhs, ...)                    *artemis.keymap.del*
+    artemis.keymap.del(mode, lhs, opts)                   *artemis.keymap.del*
         This function deletes the keymap "lhs". "mode" is a string or a table
-        of string for vim mode like "n". If "..." is "{ buffer = true }",
+        of string for vim mode like "n". If "opts" is "{ buffer = true }",
         then it deletes the keymap only in the current buffer.
 
-    artemis.keymap.set(mode, lhs, rhs, ...)               *artemis.keymap.set*
+    artemis.keymap.set(mode, lhs, rhs, opts)              *artemis.keymap.set*
         This function set the keymap "lhs" as "rhs".  "mode" is a string or
         a table of string for vim mode like "n". "rhs" is a string of command
-        or a Lua function to call. If "..." could be a table having
+        or a Lua function to call. If "opts" could be a table having
         keys of |map-arguments|.
 
     artemis.g                                                      *artemis.g*

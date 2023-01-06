@@ -38,16 +38,12 @@ function M.cast(t)
 end
 
 M._augroup = {}
-function M.create_augroup(name, ...)
+function M.create_augroup(name, opts)
   if vim.fn.has('nvim') > 0 then
-    return vim.api.nvim_create_augroup(name, ...)
+    return vim.api.nvim_create_augroup(name, opts) 
   end
   local id = generate_id()
-  local opts = {}
-  local args = {...}
-  if #args > 0 then
-    opts = args[1]
-  end
+  local opts = opts or {}
   if opts.clear then
     vim.command('augroup ' .. name .. ' | autocmd! | augroup END')
   else
@@ -105,9 +101,8 @@ function M.create_autocmd(event, opts)
 end
 
 M._keymap = {}
-local function keymap_del(mode, lhs, ...)
-  local args = {...}
-  local opts = args[1] or {}
+local function keymap_del(mode, lhs, opts)
+  local opts = opts or {}
   for _, mode in pairs(type(mode) == 'table' and mode or { mode }) do
     local cmd = mode .. 'unmap'
     local args = {}
@@ -118,9 +113,8 @@ local function keymap_del(mode, lhs, ...)
     M.cmd({cmd = cmd, args = args})
   end
 end
-local function keymap_set(mode, lhs, rhs, ...)
-  local args = {...}
-  local opts = args[1] or {}
+local function keymap_set(mode, lhs, rhs, opts) 
+  local opts = opts or {}
   for _, mode in pairs(type(mode) == 'table' and mode or { mode }) do
     local cmd = mode
     if not opts.remap or opts.noremap then
