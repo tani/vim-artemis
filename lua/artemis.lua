@@ -1,3 +1,24 @@
+------------------------------------- Artemis ----------------------------------
+--Copyright (c) 2022 TANIGUCHI Masaya
+--
+--Permission is hereby granted, free of charge, to any person obtaining a copy
+--of this software and associated documentation files (the "Software"), to deal
+--in the Software without restriction, including without limitation the rights
+--to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+--copies of the Software, and to permit persons to whom the Software is
+--furnished to do so, subject to the following conditions:
+--
+--The above copyright notice and this permission notice shall be included in all
+--copies or substantial portions of the Software.
+--
+--THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+--IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+--FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+--AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+--LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+--OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+--SOFTWARE.
+--------------------------------------------------------------------------------
 local M = {}
 
 local function generate_id()
@@ -16,7 +37,7 @@ function M.cast(t)
   return assocp and vim.dict(t) or vim.list(t)
 end
 
-M.augroup = {}
+M._augroup = {}
 function M.create_augroup(name, ...)
   if vim.fn.has('nvim') > 0 then
     return vim.api.nvim_create_augroup(name, ...)
@@ -32,18 +53,18 @@ function M.create_augroup(name, ...)
   else
     vim.command('augroup ' .. name .. ' | augroup END')
   end
-  M.augroup[id] = name
+  M._augroup[id] = name
   return id
 end
 
-M.autocmd = {}
+M._autocmd = {}
 function M.create_autocmd(event, opts)
   if vim.fn.has('nvim') > 0 then
     return vim.api.nvim_create_autocmd(event, opts)
   end
   local id = generate_id()
   if type(opts.group) == 'number' then
-    opts.group = M.augroup[opts.group]
+    opts.group = M._augroup[opts.group]
   end
   if opts.callback then
     if type(opts.callback) == 'function' then
@@ -57,50 +78,52 @@ function M.create_autocmd(event, opts)
   end
   opts.event = event
   opts.cmd = opts.command
-  M.autocmd[id] = opts
+  M._autocmd[id] = opts
   return id
 end
 
-M.keymap = vim.keymap or {
-  cmd = {},
-  del = function(mode, lhs, ...)
-    local args = {...}
-    local opts = args[1] or {}
-    for _, mode in pairs(type(mode) == 'table' and mode or { mode }) do
-      local cmd = mode .. 'unmap'
-      local args = {}
-      if opts.buffer then
-        table.insert(args, '<buffer>')
-      end
-      table.insert(args, lhs)
-      M.cmd({cmd = cmd, args = args})
+M._keymap = {}
+local function keymap_del(mode, lhs, ...)
+  local args = {...}
+  local opts = args[1] or {}
+  for _, mode in pairs(type(mode) == 'table' and mode or { mode }) do
+    local cmd = mode .. 'unmap'
+    local args = {}
+    if opts.buffer then
+      table.insert(args, '<buffer>')
     end
-  end,
-  set = function(mode, lhs, rhs, ...)
-    local args = {...}
-    local opts = args[1] or {}
-    for _, mode in pairs(type(mode) == 'table' and mode or { mode }) do
-      local cmd = mode
-      if not opts.remap or opts.noremap then
-        cmd = cmd .. 'nore'
-      end
-      cmd = cmd .. 'map'
-      local args = {}
-      for _, opt in pairs({ 'buffer', 'expr', 'nowait', 'silent', 'unique' }) do
-        if opts[opt] then
-          table.insert(args, '<' .. opt .. '>')
-        end
-      end
-      table.insert(args, lhs)
-      if type(lhs) == 'function' then
-        keymap.cmd[lhs] = rhs
-        table.insert(args, 'lua require"artemis".keymap.cmd[ [=['..lhs..']=] ]()')
-      else
-        table.insert(args, rhs)
-      end
-      M.cmd({cmd = cmd, args = args})
-    end
+    table.insert(args, lhs)
+    M.cmd({cmd = cmd, args = args})
   end
+end
+local function keymap_set(mode, lhs, rhs, ...)
+  local args = {...}
+  local opts = args[1] or {}
+  for _, mode in pairs(type(mode) == 'table' and mode or { mode }) do
+    local cmd = mode
+    if not opts.remap or opts.noremap then
+      cmd = cmd .. 'nore'
+    end
+    cmd = cmd .. 'map'
+    local args = {}
+    for _, opt in pairs({ 'buffer', 'expr', 'nowait', 'silent', 'unique' }) do
+      if opts[opt] then
+        table.insert(args, '<' .. opt .. '>')
+      end
+    end
+    table.insert(args, lhs)
+    if type(lhs) == 'function' then
+      M._keymap[lhs] = rhs
+      table.insert(args, 'lua require"artemis".keymap.cmd[ [=['..lhs..']=] ]()')
+    else
+      table.insert(args, rhs)
+    end
+    M.cmd({cmd = cmd, args = args})
+  end
+end
+M.keymap = vim.keymap or {
+  del = keymap_del,
+  set = keymap_set
 }
 
 local vars = setmetatable({}, {
@@ -135,7 +158,6 @@ local fn = setmetatable({}, {
     end
   end
 })
-
 M.fn = vim.fn.has('nvim') > 0 and vim.fn or fn
 
 M.dict = vim.dict or function(x) return x end
