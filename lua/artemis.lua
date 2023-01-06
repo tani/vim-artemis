@@ -25,8 +25,11 @@ local function generate_id()
   return string.format('%02x', math.floor(os.clock() * 1000000))
 end
 
+M.dict = vim.dict or function(x) return x end
+M.list = vim.list or function(x) return x end
+M.blob = vim.blob or function(x) return x end
 function M.cast(t)
-  if vim.fn.has('nvim') > 0 or type(t) ~= 'table' then
+  if type(t) ~= 'table' then
     return t
   end
   local assocp = false
@@ -34,7 +37,7 @@ function M.cast(t)
     assocp = assocp or type(k) ~= 'number'
     t[k] = M.cast(v)
   end
-  return assocp and vim.dict(t) or vim.list(t)
+  return assocp and M.dict(t) or M.list(t)
 end
 
 M._augroup = {}
@@ -163,22 +166,26 @@ M.v = vim.fn.has('nvim') > 0 and vim.v or vars.v
 M.w = vim.fn.has('nvim') > 0 and vim.w or vars.w
 M.o = vim.fn.has('nvim') > 0 and vim.o or vars.o
 
-local fn = setmetatable({}, {
+M.fn = setmetatable({}, {
   __index = function(_, name)
-    return function(...)
-      local str = ''
-      for i, arg in ipairs({...}) do
-        str = str .. (i > 1 and ', ' or '') .. vim.fn.string(M.cast(arg))
+    return setmetatable({name = name}, {
+      __call = function(fn, ...)
+        local args = {}
+        for i, arg in ipairs({...}) do
+          table.insert(args, M.cast(arg))
+        end
+        return vim.fn[fn.name](table.unpack(args))
+      end,
+      __index = function(fn, subname)
+        return setmetatable(
+          { name = fn.name .. '#' .. subname },
+          getmetatable(fn)
+        )
       end
-      return M.eval('function("' .. name .. '")(' .. str .. ')')
-    end
+    })
   end
 })
-M.fn = vim.fn.has('nvim') > 0 and vim.fn or fn
 
-M.dict = vim.dict or function(x) return x end
-M.list = vim.list or function(x) return x end
-M.blob = vim.blob or function(x) return x end
 M.eval = vim.eval or vim.api.nvim_eval
 M.cmd = vim.cmd or setmetatable({}, {
   __call = function(cmd, t) 

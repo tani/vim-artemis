@@ -25,6 +25,11 @@ Example~
              at = ';->\\%#',
              input = '\\rightarrow'
            }
+           -- You can also chain with the dot instead of the sharp
+           vimx.fn.lexima.add_rule {
+             at = ';->\\%#',
+             input = '\\rightarrow'
+           }
          end
        }
      end)
@@ -77,6 +82,9 @@ API Manual~
         This table is corresponding to the Vim functions. Compared to
         |if_lua.txt|, the argument will be proxied by |artemis.cast|; i.e.,
         you do not need to cast the lua object to the vim object.
+        Moreover, artemis concatenates keys chained by dot with '#'.
+        For example, 'artemis.fn.lexima.add_rule' is equivalent to
+        "artemis.fn['lexima#add_rule']".
 
     artemis.cast([table])                                       *artemis.cast*
         This function converts the "table" to dict or list according to the
