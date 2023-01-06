@@ -66,18 +66,40 @@ function M.create_autocmd(event, opts)
   if type(opts.group) == 'number' then
     opts.group = M._augroup[opts.group]
   end
-  if opts.callback then
-    if type(opts.callback) == 'function' then
-      opts.command = 'lua require("artemis").autocmd[' .. id .. '].callback()'
-    else
-      opts.command = 'call ' .. opts.callback .. '()'
-    end
-  end
   if opts.buffer then
     opts.bufnr = opts.buffer
   end
   opts.event = event
   opts.cmd = opts.command
+  if opts.callback then
+    if type(opts.callback) == 'function' then
+      opts._callback = function()
+        local arg = {
+          id = id,
+          event = opts.event,
+          group = opts.group,
+          buf = vim.fn.expand('<abuf>'),
+          file = vim.fn.expand('<afile>'),
+          matched = vim.fn.expand('<amatch>'),
+        }
+        opts.callback(arg)
+      end
+      opts.command = 'lua require("artemis").autocmd[' .. id .. ']._callback()'
+    else
+      opts._callback = function()
+        local arg = {
+          id = id,
+          event = opts.event,
+          group = opts.group,
+          buf = vim.fn.expand('<abuf>'),
+          file = vim.fn.expand('<afile>'),
+          matched = vim.fn.expand('<amatch>'),
+        }
+        vim.fn[opts.callback](opts.arg)
+      end
+      opts.command = 'lua require("artemis").autocmd[' .. id .. ']._callback()'
+    end
+  end
   M._autocmd[id] = opts
   return id
 end
