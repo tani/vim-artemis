@@ -80,7 +80,7 @@ function M.create_autocmd(event, opts)
           group = opts.group,
           buf = vim.fn.expand('<abuf>'),
           file = vim.fn.expand('<afile>'),
-          matched = vim.fn.expand('<amatch>'),
+          match = vim.fn.expand('<amatch>'),
         }
         opts.callback(arg)
       end
@@ -93,7 +93,7 @@ function M.create_autocmd(event, opts)
           group = opts.group,
           buf = vim.fn.expand('<abuf>'),
           file = vim.fn.expand('<afile>'),
-          matched = vim.fn.expand('<amatch>'),
+          match = vim.fn.expand('<amatch>'),
         }
         vim.fn[opts.callback](opts.arg)
       end
