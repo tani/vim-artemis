@@ -13,6 +13,9 @@ local vimx = require 'artemis'
 -- You can set a value to the variable
 vimx.g.tex_flavor = 'latex'
 
+-- You can set a value to the part of the dictionary
+vimx.g.lightline.colorscheme = 'gruvbox_material'
+
 -- You can call Vim command naturally
 vimx.cmd.packadd 'vim-jetpack'
 
@@ -22,6 +25,11 @@ require('jetpack.packer').startup(function(use)
     config = function()
       -- fn proxies arguments using artemis.cast
       vimx.fn['lexima#add_rule'] {
+        at = ';->\\%#',
+        input = '\\rightarrow'
+      }
+      -- You can also chain with the dot instead of the sharp
+      vimx.fn.lexima.add_rule {
         at = ';->\\%#',
         input = '\\rightarrow'
       }

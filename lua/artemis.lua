@@ -147,24 +147,38 @@ M.keymap = vim.keymap or {
 
 local vars = setmetatable({}, {
   __index = function(_, scope)
-    local prefix = scope == 'o' and '&' or (scope .. ':')
-    return setmetatable({}, {
-      __index = function(_, name)
-        return vim.eval(prefix .. name)
+    return setmetatable({__name = ''}, {
+      __newindex = function(var, name, value)
+        M.cmd( 'let ' .. scope .. ':' .. var.__name .. '["' .. name .. '"]' .. ' = ' .. vim.fn.string(M.cast(value)) )
       end,
-      __newindex = function(_, name, value)
-        local str = vim.fn.string(M.cast(value))
-        vim.command('let ' .. prefix .. name .. ' = ' .. str)
+      __index = function(var, name)
+        local val = M.eval(scope .. ':' .. var.__name .. '["' .. name .. '"]')
+        if type(val) == 'table' then
+          val.__name = var.__name .. '["' .. name .. '"]'
+          setmetatable(val, getmetatable(var))
+        end
+        return val
       end
     })
   end
 })
-M.g = vim.fn.has('nvim') > 0 and vim.g or vars.g
-M.t = vim.fn.has('nvim') > 0 and vim.t or vars.t
-M.b = vim.fn.has('nvim') > 0 and vim.b or vars.b
-M.v = vim.fn.has('nvim') > 0 and vim.v or vars.v
-M.w = vim.fn.has('nvim') > 0 and vim.w or vars.w
-M.o = vim.fn.has('nvim') > 0 and vim.o or vars.o
+
+local vars_o = setmetatable({}, {
+  __index = function(_, name)
+    return vim.eval('&' .. name)
+  end,
+  __newindex = function(_, name, value)
+    local str = vim.fn.string(M.cast(value))
+    vim.command('let ' .. '&' .. name .. ' = ' .. str)
+  end
+})
+
+M.g = vars.g
+M.t = vars.t
+M.b = vars.b
+M.v = vars.v
+M.w = vars.w
+M.o = vars_o
 
 M.fn = setmetatable({}, {
   __index = function(_, name)
