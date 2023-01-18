@@ -44,6 +44,8 @@ API Manual~
 	This function creates a user command "name". You can set flags for 
 	|command| such as "-complete=buffer" "{ complete = 'buffer' }".
 	You can also set boolean value "{ range=true }" as "-range".
+	If callback is lua function, then the function takes an argument
+	contains fargs, args, reg, count, range, line1, line2, and mods.
 
     artemis.delete_command(name)                      *artemis.delete_command*
 	This function deletes a user command "name".
