@@ -25,6 +25,43 @@ local function generate_id()
   return string.format('%02x', math.floor(os.clock() * 1000000))
 end
 
+M._command = {}
+M.create_command = function(name, callback, opts)
+  if vim.fn.has('nvim') > 0 then
+    return vim.api.nvim_create_user_command(name, callback, opts)
+  end
+  local _callback = callback
+  if type(callback) == 'function' then
+    M._command[name] = callback
+    _callback = 'lua require("artemis")._command["' .. name .. '"]({reg = [=[<reg>]=], bang = [=[<bang>]=] == "!", args = [=[<args>]=], fargs = {<f-args>}, line1 = <line1>, line2 = <line2>, count = <count>, range = <range>, mods = [=[<mods>]=]})'
+  end
+  local args = {}
+  for k, v in pairs(opts) do
+    if k == 'force' then
+      goto continue
+    end
+    if type(v) == 'boolean' then
+      if v then
+        table.insert(args, '-' .. k)
+      end
+    end
+    if type(v) == 'string' then
+      table.insert(args, '-' .. k .. '=' .. v)
+    end
+    ::continue::
+  end
+  table.insert(args, name)
+  table.insert(args, _callback)
+  M.cmd.command { bang = opts.force, args = args }
+end
+
+M.delete_command = function()
+  if vim.fn.has('nvim') > 0 then
+    return vim.api.nvim_del_user_command(name)
+  end
+  M.cmd.delcommand(name)
+end
+
 M.dict = vim.dict or function(x) return x end
 M.list = vim.list or function(x) return x end
 M.blob = vim.blob or function(x) return x end
@@ -83,7 +120,7 @@ function M.create_autocmd(event, opts)
         }
         opts.callback(arg)
       end
-      opts.command = 'lua require("artemis").autocmd[' .. id .. ']._callback()'
+      opts.command = 'lua require("artemis")._autocmd[' .. id .. ']._callback()'
     else
       opts._callback = function()
         local arg = {
@@ -96,7 +133,7 @@ function M.create_autocmd(event, opts)
         }
         vim.fn[opts.callback](opts.arg)
       end
-      opts.command = 'lua require("artemis").autocmd[' .. id .. ']._callback()'
+      opts.command = 'lua require("artemis")._autocmd[' .. id .. ']._callback()'
     end
   end
   M._autocmd[id] = opts
@@ -133,7 +170,7 @@ local function keymap_set(mode, lhs, rhs, opts)
     table.insert(args, lhs)
     if type(lhs) == 'function' then
       M._keymap[lhs] = rhs
-      table.insert(args, 'lua require"artemis".keymap.cmd[ [=['..lhs..']=] ]()')
+      table.insert(args, 'lua require"artemis"._keymap[ [=['..lhs..']=] ]()')
     else
       table.insert(args, rhs)
     end
@@ -165,11 +202,26 @@ local vars = setmetatable({}, {
 
 local vars_o = setmetatable({}, {
   __index = function(_, name)
-    return vim.eval('&' .. name)
+    return M.eval('&' .. name)
   end,
   __newindex = function(_, name, value)
-    local str = vim.fn.string(M.cast(value))
-    vim.command('let ' .. '&' .. name .. ' = ' .. str)
+    M.cmd('let &' .. name .. '=' .. M.fn.string(value))
+  end
+})
+local vars_bo = setmetatable({}, {
+  __index = function(_, name)
+    return M.eval('&l:' .. name)
+  end,
+  __newindex = function(_, name, value)
+    M.cmd('let &l:' .. name .. '=' .. M.fn.string(value))
+  end
+})
+local vars_go = setmetatable({}, {
+  __index = function(_, name)
+    return M.eval('&g:' .. name)
+  end,
+  __newindex = function(_, name, value)
+    M.cmd('let &g:' .. name .. '=' .. M.fn.string(value))
   end
 })
 
@@ -179,6 +231,8 @@ M.b = vars.b
 M.v = vars.v
 M.w = vars.w
 M.o = vars_o
+M.bo = vars_bo
+M.go = vars_go
 
 M.fn = setmetatable({}, {
   __index = function(_, name)

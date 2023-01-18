@@ -40,6 +40,13 @@ Example~
 <
 
 API Manual~
+    artemis.create_command(name, callback, opts)      *artemis.create_command*
+	This function creates a user command "name". You can set flags for 
+	|command| such as "-complete=buffer" "{ complete = 'buffer' }".
+	You can also set boolean value "{ range=true }" as "-range".
+
+    artemis.delete_command(name)                      *artemis.delete_command*
+	This function deletes a user command "name".
 
     artemis.create_augroup(name, opts)                *artemis.create_augroup*
         This function creates augroup named "name". Optionally, the table has
@@ -81,6 +88,11 @@ API Manual~
     artemis.o                                                      *artemis.o*
         These tables are corresponding to the Vim variables. For instance,
         "g.lightline" is equivalent to "g:lightline".
+
+    artemis.bo                                                     *artemis.bo*
+    artemis.go                                                     *artemis.go*
+	This tables are corresponding global/buffer-local options.
+	They are equivalent to "&l:" and "&g:".
 
     artemis.fn                                                    *artemis.fn*
         This table is corresponding to the Vim functions. Compared to
