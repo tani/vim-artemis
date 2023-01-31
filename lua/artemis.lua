@@ -120,7 +120,7 @@ function M.create_autocmd(event, opts)
         }
         opts.callback(arg)
       end
-      opts.command = 'lua require("artemis")._autocmd[' .. id .. ']._callback()'
+      opts.cmd = 'lua require("artemis")._autocmd["' .. id .. '"]._callback()'
     else
       opts._callback = function()
         local arg = {
@@ -133,9 +133,10 @@ function M.create_autocmd(event, opts)
         }
         vim.fn[opts.callback](opts.arg)
       end
-      opts.command = 'lua require("artemis")._autocmd[' .. id .. ']._callback()'
+      opts.cmd = 'lua require("artemis")._autocmd["' .. id .. '"]._callback()'
     end
   end
+  M.fn.autocmd_add({opts})
   M._autocmd[id] = opts
   return id
 end
