@@ -19,6 +19,7 @@
 --OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 --SOFTWARE.
 --------------------------------------------------------------------------------
+
 local M = {}
 
 local function generate_id()
@@ -108,8 +109,10 @@ function M.create_autocmd(event, opts)
   opts.event = event
   opts.cmd = opts.command
   if opts.callback then
-    if type(opts.callback) == 'function' then
-      opts._callback = function()
+    local callback = opts.callback
+    opts.callback = nil
+    if type(callback) == 'function' then
+      M._autocmd[id] = function()
         local arg = {
           id = id,
           event = opts.event,
@@ -118,11 +121,11 @@ function M.create_autocmd(event, opts)
           file = vim.fn.expand('<afile>'),
           match = vim.fn.expand('<amatch>'),
         }
-        opts.callback(arg)
+        callback(arg)
       end
-      opts.cmd = 'lua require("artemis")._autocmd["' .. id .. '"]._callback()'
+      opts.cmd = 'lua require("artemis")._autocmd["' .. id .. '"]()'
     else
-      opts._callback = function()
+      M._autocmd[id] = function()
         local arg = {
           id = id,
           event = opts.event,
@@ -131,13 +134,12 @@ function M.create_autocmd(event, opts)
           file = vim.fn.expand('<afile>'),
           match = vim.fn.expand('<amatch>'),
         }
-        vim.fn[opts.callback](opts.arg)
+        vim.fn[callback](opts.arg)
       end
-      opts.cmd = 'lua require("artemis")._autocmd["' .. id .. '"]._callback()'
+      opts.cmd = 'lua require("artemis")._autocmd["' .. id .. '"]()'
     end
   end
   M.fn.autocmd_add({opts})
-  M._autocmd[id] = opts
   return id
 end
 
@@ -206,7 +208,7 @@ local vars_o = setmetatable({}, {
     return M.eval('&' .. name)
   end,
   __newindex = function(_, name, value)
-    M.cmd('let &' .. name .. '=' .. M.fn.string(value))
+    M.cmd('let &' .. name .. ' = ' .. M.fn.string(M.cast(value)))
   end
 })
 local vars_bo = setmetatable({}, {
@@ -214,7 +216,7 @@ local vars_bo = setmetatable({}, {
     return M.eval('&l:' .. name)
   end,
   __newindex = function(_, name, value)
-    M.cmd('let &l:' .. name .. '=' .. M.fn.string(value))
+    M.cmd('let &l:' .. name .. ' = ' .. M.fn.string(value))
   end
 })
 local vars_go = setmetatable({}, {
@@ -222,7 +224,7 @@ local vars_go = setmetatable({}, {
     return M.eval('&g:' .. name)
   end,
   __newindex = function(_, name, value)
-    M.cmd('let &g:' .. name .. '=' .. M.fn.string(value))
+    M.cmd('let &g:' .. name.. ' = ' .. M.fn.string(value))
   end
 })
 
