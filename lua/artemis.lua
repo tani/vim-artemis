@@ -56,7 +56,7 @@ M.create_command = function(name, callback, opts)
   M.cmd.command { bang = opts.force, args = args }
 end
 
-M.delete_command = function()
+M.delete_command = function(name)
   if vim.fn.has('nvim') > 0 then
     return vim.api.nvim_del_user_command(name)
   end
@@ -81,10 +81,10 @@ end
 M._augroup = {}
 function M.create_augroup(name, opts)
   if vim.fn.has('nvim') > 0 then
-    return vim.api.nvim_create_augroup(name, opts) 
+    return vim.api.nvim_create_augroup(name, opts)
   end
   local id = generate_id()
-  local opts = opts or {}
+  opts = opts or {}
   if opts.clear then
     vim.command('augroup ' .. name .. ' | autocmd! | augroup END')
   else
@@ -134,7 +134,7 @@ function M.create_autocmd(event, opts)
           file = vim.fn.expand('<afile>'),
           match = vim.fn.expand('<amatch>'),
         }
-        vim.fn[callback](opts.arg)
+        vim.fn[callback](arg)
       end
       opts.cmd = 'lua require("artemis")._autocmd["' .. id .. '"]()'
     end
@@ -144,9 +144,9 @@ function M.create_autocmd(event, opts)
 end
 
 M._keymap = {}
-local function keymap_del(mode, lhs, opts)
-  local opts = opts or {}
-  for _, mode in pairs(type(mode) == 'table' and mode or { mode }) do
+local function keymap_del(modes, lhs, opts)
+  opts = opts or {}
+  for _, mode in pairs(type(modes) == 'table' and modes or { modes }) do
     local cmd = mode .. 'unmap'
     local args = {}
     if opts.buffer then
@@ -156,9 +156,9 @@ local function keymap_del(mode, lhs, opts)
     M.cmd({cmd = cmd, args = args})
   end
 end
-local function keymap_set(mode, lhs, rhs, opts) 
-  local opts = opts or {}
-  for _, mode in pairs(type(mode) == 'table' and mode or { mode }) do
+local function keymap_set(modes, lhs, rhs, opts)
+  opts = opts or {}
+  for _, mode in pairs(type(modes) == 'table' and modes or { modes }) do
     local cmd = mode
     if not opts.remap or opts.noremap then
       cmd = cmd .. 'nore'
@@ -413,7 +413,7 @@ M.fn = setmetatable({}, {
     return setmetatable({name = name}, {
       __call = function(fn, ...)
         local args = {}
-        for i, arg in ipairs({...}) do
+        for _, arg in ipairs({...}) do
           table.insert(args, M.cast(arg))
         end
         local unpack = unpack or table.unpack
@@ -431,7 +431,7 @@ M.fn = setmetatable({}, {
 
 M.eval = vim.eval or vim.api.nvim_eval
 M.cmd = vim.cmd or setmetatable({}, {
-  __call = function(cmd, t) 
+  __call = function(cmd, t)
     if type(t) == 'table' then
       local c = t.cmd or t[1]
       if t.bang then
