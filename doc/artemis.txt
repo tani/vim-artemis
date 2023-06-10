@@ -96,6 +96,24 @@ API Manual~
 	This tables are corresponding global/buffer-local options.
 	They are equivalent to "&l:" and "&g:".
 
+    artemis.opt                                                   *artemis.opt*
+    artemis.opt_local                                       *artemis.opt_local*
+    artemis.opt_global                                     *artemis.opt_global*
+	This tables are lua-friendly interface of |artemis.o|, |artemis.bo|,
+	|artemis.go|. You can use a table to set a list/dict value.
+>
+    artemis.opt.helplang = { "ja", "en" }
+    artemis.opt.helplang:append { "zh" }
+    artemis.opt.helplang:prepend { "zh" }
+    artemis.opt.helplang:remove { "zh" }
+    vim.opt.listchars = {
+      tab = "▸ ",
+      trail = "·",
+      nbsp = "␣",
+      extends = ">",
+      precedes = "<",
+    }
+<
     artemis.fn                                                    *artemis.fn*
         This table is corresponding to the Vim functions. Compared to
         |if_lua.txt|, the argument will be proxied by |artemis.cast|; i.e.,
