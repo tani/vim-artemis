@@ -203,6 +203,126 @@ local vars = setmetatable({}, {
   end
 })
 
+local function encode_opt(tbl)
+  if type(tbl) == 'table' then
+    if vim.tbl_islist(tbl) then
+      return table.concat(tbl, ',')
+    end
+    local dict = {}
+    for k, v in pairs(tbl) do
+      if type(v) ~= 'string' then
+        print('value of key ' .. k .. ' is not string')
+        return ''
+      end
+      table.insert(dict, k .. ':' .. v)
+    end
+    return table.concat(dict, ',')
+  else
+    return string(tbl)
+  end
+end
+
+local function decode_opt(str)
+  if type(str) ~= 'string' then
+    return str
+  end
+  if not str:match('[,:]') then
+    return str
+  end
+  local tbl = vim.split(str, ',')
+  local idx = 1
+  local dict = {}
+  for _, v in pairs(tbl) do
+    local kv = vim.split(v, ':')
+    if #kv == 1 then
+      dict[idx] = kv[1]
+      idx = idx + 1
+    else
+      dict[kv[1]] = kv[2]
+    end
+  end
+  return dict
+end
+
+local function create_append(self, key)
+  return function(new_value)
+    local value = self[key]
+    if type(value) ~= 'table' or type(new_value) ~= 'table' then
+      print('value of key ' .. key .. ' is not table')
+      return
+    end
+    if M.fn.empty(self[key]) then
+      self[key] = new_value
+    else
+      -- merge value and new_value
+      for k, v in pairs(new_value) do
+        if type(k) == 'number' then
+          table.insert(value, v)
+        else
+          value[k] = v
+        end
+      end
+      self[key] = value
+    end
+    return self[key]
+  end
+end
+
+local function create_prepend(self, key)
+  return function(new_value)
+    local value = self[key]
+    if type(value) ~= 'table' or type(new_value) ~= 'table' then
+      print('value of key ' .. key .. ' is not table')
+      return
+    end
+    if M.fn.empty(self[key]) then
+      self[key] = new_value
+    else
+      -- merge value and new_value
+      for k, v in pairs(new_value) do
+        if type(k) == 'number' then
+          table.insert(value, 1, v)
+        else
+          value[k] = v
+        end
+      end
+      self[key] = value
+    end
+    return self[key]
+  end
+end
+
+local function create_remove(self, key)
+  return function(new_value)
+    local value = self[key]
+    if type(value) ~= 'table' or type(new_value) ~= 'table' then
+      print('value of key ' .. key .. ' is not table')
+      return
+    end
+    if not M.fn.empty(self[key]) then
+      local tbl = vim.split(value, ',')
+      local new_tbl = {}
+      for _, v in pairs(tbl) do
+        if type(new_value) ~= 'table' then
+          new_value = { new_value }
+        end
+        local found = false
+        for _, nv in pairs(new_value) do
+          if v == nv then
+            found = true
+            break
+          end
+        end
+        if not found then
+          table.insert(new_tbl, v)
+        end
+      end
+      self[key] = table.concat(new_tbl, ',')
+    end
+    return self[key]
+  end
+end
+
 local vars_o = setmetatable({}, {
   __index = function(_, name)
     return M.eval('&' .. name)
@@ -211,6 +331,22 @@ local vars_o = setmetatable({}, {
     M.cmd('let &' .. name .. ' = ' .. M.fn.string(M.cast(value)))
   end
 })
+
+local vars_opt = setmetatable({}, {
+  __index = function(self, name)
+    local ret = decode_opt(M.eval('&' .. name))
+    if type(ret) == 'table' then
+      ret.append = create_append(self, name)
+      ret.prepend = create_prepend(self, name)
+      ret.remove = create_remove(self, name)
+    end
+    return ret
+  end,
+  __newindex = function(_, name, value)
+    M.cmd('let &' .. name .. ' = ' .. M.fn.string(encode_opt(value)))
+  end
+})
+
 local vars_bo = setmetatable({}, {
   __index = function(_, name)
     return M.eval('&l:' .. name)
@@ -219,12 +355,43 @@ local vars_bo = setmetatable({}, {
     M.cmd('let &l:' .. name .. ' = ' .. M.fn.string(value))
   end
 })
+
+local vars_opt_local = setmetatable({}, {
+  __index = function(self, name)
+    local ret = decode_opt(M.eval('&l:' .. name))
+    if type(ret) == 'table' then
+      ret.append = create_append(self, name)
+      ret.prepend = create_prepend(self, name)
+      ret.remove = create_remove(self, name)
+    end
+    return ret
+  end,
+  __newindex = function(_, name, value)
+    M.cmd('let &l:' .. name .. ' = ' .. M.fn.string(encode_opt(value)))
+  end
+})
+
 local vars_go = setmetatable({}, {
   __index = function(_, name)
     return M.eval('&g:' .. name)
   end,
   __newindex = function(_, name, value)
     M.cmd('let &g:' .. name.. ' = ' .. M.fn.string(value))
+  end
+})
+
+local vars_opt_global = setmetatable({}, {
+  __index = function(self, name)
+    local ret = decode_opt(M.eval('&g:' .. name))
+    if type(ret) == 'table' then
+      ret.append = create_append(self, name)
+      ret.prepend = create_prepend(self, name)
+      ret.remove = create_remove(self, name)
+    end
+    return ret
+  end,
+  __newindex = function(_, name, value)
+    M.cmd('let &g:' .. name .. ' = ' .. M.fn.string(encode_opt(value)))
   end
 })
 
@@ -236,6 +403,10 @@ M.w = vars.w
 M.o = vars_o
 M.bo = vars_bo
 M.go = vars_go
+
+M.opt = vars_opt
+M.opt_local = vars_opt_local
+M.opt_global = vars_opt_global
 
 M.fn = setmetatable({}, {
   __index = function(_, name)
