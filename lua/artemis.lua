@@ -171,7 +171,7 @@ local function keymap_set(modes, lhs, rhs, opts)
       end
     end
     table.insert(args, lhs)
-    if type(lhs) == 'function' then
+    if type(rhs) == 'function' then
       M._keymap[lhs] = rhs
       table.insert(args, 'lua require"artemis"._keymap[ [=['..lhs..']=] ]()')
     else
