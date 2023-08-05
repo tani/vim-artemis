@@ -66,7 +66,7 @@ end
 
 M.create_buf_command = function(bufn, name, callback, opts)
   if vim.fn.has('nvim') > 0 then
-    return vim.api.nvim_buf_set_user_command(bufn, name, callback, opts)
+    return vim.api.nvim_buf_create_user_command(bufn, name, callback, opts)
   end
   local _callback = callback
   if type(callback) == 'function' then
