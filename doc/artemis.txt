@@ -41,14 +41,20 @@ Example~
 
 API Manual~
     artemis.create_command(name, callback, opts)      *artemis.create_command*
-	This function creates a user command "name". You can set flags for 
-	|command| such as "-complete=buffer" "{ complete = 'buffer' }".
-	You can also set boolean value "{ range=true }" as "-range".
-	If callback is lua function, then the function takes an argument
-	contains fargs, args, reg, count, range, line1, line2, and mods.
+        This function creates a user command "name". You can set flags for
+        |command| such as "-complete=buffer" "{ complete = 'buffer' }".
+        You can also set boolean value "{ range=true }" as "-range".
+        If callback is lua function, then the function takes an argument
+        contains fargs, args, reg, count, range, line1, line2, and mods.
+
+    artemis.create_buf_command(bufnr, name, callback, opts)
+                                                       *artemis.create_command*
+        This function specifically creates a buffer-local command. Unlike
+        using "{ buffer = true }", this allows you to set a command for a
+        certain buffer that is passed by the "bufnr" parameter.
 
     artemis.delete_command(name)                      *artemis.delete_command*
-	This function deletes a user command "name".
+        This function deletes a user command "name".
 
     artemis.create_augroup(name, opts)                *artemis.create_augroup*
         This function creates augroup named "name". Optionally, the table has
@@ -69,7 +75,7 @@ API Manual~
 
             callback  a Lua funciton to call. Or, a string representing
                       Vim script function to call. Note that this option will
-                      overwrites "command" option. 
+                      overwrites "command" option.
 
     artemis.keymap.del(mode, lhs, opts)                   *artemis.keymap.del*
         This function deletes the keymap "lhs". "mode" is a string or a table
@@ -93,26 +99,26 @@ API Manual~
 
     artemis.bo                                                     *artemis.bo*
     artemis.go                                                     *artemis.go*
-	This tables are corresponding global/buffer-local options.
-	They are equivalent to "&l:" and "&g:".
+        This tables are corresponding global/buffer-local options.
+        They are equivalent to "&l:" and "&g:".
 
     artemis.opt                                                   *artemis.opt*
     artemis.opt_local                                       *artemis.opt_local*
     artemis.opt_global                                     *artemis.opt_global*
-	This tables are lua-friendly interface of |artemis.o|, |artemis.bo|,
-	|artemis.go|. You can use a table to set a list/dict value.
+        This tables are lua-friendly interface of |artemis.o|, |artemis.bo|,
+        |artemis.go|. You can use a table to set a list/dict value.
 >
-    artemis.opt.helplang = { "ja", "en" }
-    artemis.opt.helplang:append { "zh" }
-    artemis.opt.helplang:prepend { "zh" }
-    artemis.opt.helplang:remove { "zh" }
-    vim.opt.listchars = {
-      tab = "▸ ",
-      trail = "·",
-      nbsp = "␣",
-      extends = ">",
-      precedes = "<",
-    }
+        artemis.opt.helplang = { "ja", "en" }
+        artemis.opt.helplang:append { "zh" }
+        artemis.opt.helplang:prepend { "zh" }
+        artemis.opt.helplang:remove { "zh" }
+        vim.opt.listchars = {
+          tab = "▸ ",
+          trail = "·",
+          nbsp = "␣",
+          extends = ">",
+          precedes = "<",
+        }
 <
     artemis.fn                                                    *artemis.fn*
         This table is corresponding to the Vim functions. Compared to

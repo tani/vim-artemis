@@ -56,6 +56,45 @@ M.create_command = function(name, callback, opts)
   M.cmd.command { bang = opts.force, args = args }
 end
 
+function with_buffer(bufn, callback)
+  local curr = M.fn.bufnr('.')
+  M.cmd.buffer(bufn)
+  local result = callback()
+  M.cmd.buffer(curr)
+  return result
+end
+
+M.create_buf_command = function(bufn, name, callback, opts)
+  if vim.fn.has('nvim') > 0 then
+    return vim.api.nvim_buf_set_user_command(bufn, name, callback, opts)
+  end
+  local _callback = callback
+  if type(callback) == 'function' then
+    M._command[name] = callback
+    _callback = 'lua require("artemis")._command["' .. name .. '"]({reg = [=[<reg>]=], bang = [=[<bang>]=] == "!", args = [=[<args>]=], fargs = {<f-args>}, line1 = <line1>, line2 = <line2>, count = <count>, range = <range>, mods = [=[<mods>]=]})'
+  end
+  local args = { '-buffer' }
+  for k, v in pairs(opts) do
+    if k == 'force' then
+      goto continue
+    end
+    if type(v) == 'boolean' then
+      if v then
+        table.insert(args, '-' .. k)
+      end
+    end
+    if type(v) == 'string' then
+      table.insert(args, '-' .. k .. '=' .. v)
+    end
+    ::continue::
+  end
+  table.insert(args, name)
+  table.insert(args, _callback)
+  with_buffer(bufn, function()
+    M.cmd.command { bang = opts.force, args = args }
+  end)
+end
+
 M.delete_command = function(name)
   if vim.fn.has('nvim') > 0 then
     return vim.api.nvim_del_user_command(name)
