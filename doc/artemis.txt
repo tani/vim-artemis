@@ -48,7 +48,7 @@ API Manual~
         contains fargs, args, reg, count, range, line1, line2, and mods.
 
     artemis.create_buf_command(bufnr, name, callback, opts)
-                                                       *artemis.create_command*
+                                                  *artemis.create_buf_command*
         This function specifically creates a buffer-local command. Unlike
         using "{ buffer = true }", this allows you to set a command for a
         certain buffer that is passed by the "bufnr" parameter.
