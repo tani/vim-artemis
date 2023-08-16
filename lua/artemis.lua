@@ -211,8 +211,17 @@ local function keymap_set(modes, lhs, rhs, opts)
     end
     table.insert(args, lhs)
     if type(rhs) == 'function' then
+      local expr = 'require"artemis"._keymap[ [=[' .. lhs .. ']=] ]()'
+      if opts.expr then
+        -- insert expr to `lueavel` argument.
+        -- so escape single quote at vim style
+        -- see `:h expr-'`
+        expr = expr:gsub("'", "''")
+        table.insert(args, string.format("luaeval('%s')", expr))
+      else
+        table.insert(args, string.format('<Cmd>lua %s<CR>', expr))
+      end
       M._keymap[lhs] = rhs
-      table.insert(args, 'lua require"artemis"._keymap[ [=['..lhs..']=] ]()')
     else
       table.insert(args, rhs)
     end
