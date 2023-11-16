@@ -240,7 +240,8 @@ local vars = setmetatable({}, {
         M.cmd( 'let ' .. scope .. ':' .. var.__name .. '["' .. name .. '"]' .. ' = ' .. vim.fn.string(M.cast(value)) )
       end,
       __index = function(var, name)
-        local val = M.eval(scope .. ':' .. var.__name .. '["' .. name .. '"]')
+        local expr = scope .. ':' .. var.__name .. '["' .. name .. '"]'
+        local val, err = pcall(M.eval, expr)
         if type(val) == 'table' then
           val.__name = var.__name .. '["' .. name .. '"]'
           setmetatable(val, getmetatable(var))
@@ -251,9 +252,29 @@ local vars = setmetatable({}, {
   end
 })
 
+local function tbl_islist(tbl)
+  if vim.fn.has('nvim') > 0 then
+    return vim.tbl_islist(tbl)
+  end
+  if type(tbl) ~= 'table' then
+    return false
+  end
+  local idx = 1
+  for k, _ in pairs(tbl) do
+    if type(k) ~= 'number' then
+      return false
+    end
+    if k ~= idx then
+      return false
+    end
+    idx = idx + 1
+  end
+  return true
+end
+
 local function encode_opt(tbl)
   if type(tbl) == 'table' then
-    if vim.tbl_islist(tbl) then
+    if tbl_islist(tbl) then
       return table.concat(tbl, ',')
     end
     local dict = {}
@@ -262,11 +283,15 @@ local function encode_opt(tbl)
         print('value of key ' .. k .. ' is not string')
         return ''
       end
-      table.insert(dict, k .. ':' .. v)
+      if type(k) == 'number' then
+        table.insert(dict, v)
+      else
+        table.insert(dict, k .. ':' .. v)
+      end
     end
     return table.concat(dict, ',')
   else
-    return string(tbl)
+    return tbl
   end
 end
 
