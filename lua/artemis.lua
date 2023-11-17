@@ -241,7 +241,7 @@ local vars = setmetatable({}, {
       end,
       __index = function(var, name)
         local expr = scope .. ':' .. var.__name .. '["' .. name .. '"]'
-        local val, err = pcall(M.eval, expr)
+        local err, val = pcall(M.eval, expr)
         if type(val) == 'table' then
           val.__name = var.__name .. '["' .. name .. '"]'
           setmetatable(val, getmetatable(var))
