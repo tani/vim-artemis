@@ -92,6 +92,30 @@ function M.setup()
   install_bit()
   sentinel()
 
+  if host.kind == 'nvim' then
+    -- Backport functions newer than the running Neovim: run the vendored
+    -- shared.lua against a shadow `vim` and copy over what is missing.
+    local path = package.searchpath(vendor .. 'shared', package.path)
+    local chunk = path and loadfile(path)
+    if chunk and setfenv then
+      local shadow = setmetatable({}, { __index = vim })
+      setfenv(chunk, setmetatable({ vim = shadow }, { __index = _G }))
+      if pcall(chunk) then
+        for k, v in pairs(shadow) do
+          if vim[k] == nil then
+            vim[k] = v
+          end
+        end
+      end
+    end
+  end
+
+  if host.kind == 'nvim' and vim.keycode == nil then
+    vim.keycode = function(str)
+      return vim.api.nvim_replace_termcodes(str, true, true, true)
+    end
+  end
+
   if host.kind == 'vim' then
     -- shared.lua assigns into the global `vim` table as a side effect.
     require(vendor .. 'shared')

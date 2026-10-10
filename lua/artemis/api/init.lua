@@ -6,5 +6,6 @@ require('artemis.api.win')(A)
 require('artemis.api.opt')(A)
 require('artemis.api.misc')(A)
 require('artemis.api.cmd')(A)
+require('artemis.api.extmark')(A)
 
 return A

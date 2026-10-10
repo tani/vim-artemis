@@ -31,15 +31,21 @@ local function check_name(name)
   end
 end
 
+-- Options that exist in Neovim but not in Vim (statuscolumn, winbar, ...):
+-- accepted and remembered, but without any effect on the editor.
+local shadow = {}
+
 --- Metadata for option `name` (static table first, then probing Vim).
 local function info(name)
   check_name(name)
   local long, rec = resolve(name)
-  if not truthy(host.eval('exists("+' .. (long or name) .. '")')) then
+  local present = truthy(host.eval('exists("+' .. (long or name) .. '")'))
+  if not present and not rec then
     error("Invalid option (not found): '" .. name .. "'", 3)
   end
   if rec then
     return {
+      vimless = not present,
       name = long,
       shortname = rec[6],
       type = rec[1],
@@ -73,6 +79,14 @@ local function info(name)
   }
 end
 
+local vlua = require('artemis.core.vlua')
+
+-- Options holding a function name: `v:lua.f` becomes a Funcref.
+local funcref_opts = {
+  operatorfunc = true, completefunc = true, omnifunc = true, tagfunc = true,
+  thesaurusfunc = true, quickfixtextfunc = true, findfunc = true,
+}
+
 local function to_lua(i, v)
   if i.type == 'boolean' then
     return v == 1 or v == true
@@ -84,6 +98,13 @@ local function get(name, opts)
   opts = opts or {}
   local i = info(name)
   local n = i.name
+  if i.vimless then
+    local v = shadow[n]
+    if v == nil then
+      v = (i.type == 'boolean' and false) or (i.type == 'number' and 0) or ''
+    end
+    return v
+  end
   local v
   if opts.win and opts.buf then
     error("Can only use one of 'buf' or 'win'", 3)
@@ -105,11 +126,23 @@ local function set(name, value, opts)
   opts = opts or {}
   local i = info(name)
   local n = i.name
+  if i.vimless then
+    shadow[n] = value
+    return
+  end
   if type(value) == 'boolean' then
     value = value and 1 or 0
   end
   if value == nil then
     error('Option value cannot be nil', 3)
+  end
+  if type(value) == 'string' and value:find('v:lua', 1, true) then
+    local fn = funcref_opts[n] and vlua.as_function(value)
+    if fn then
+      value = vim.call('luaeval', '_A', fn)
+    else
+      value = vlua.rewrite(value)
+    end
   end
   if opts.win and opts.buf then
     error("Can only use one of 'buf' or 'win'", 3)
@@ -121,9 +154,9 @@ local function set(name, value, opts)
     return
   end
   -- Route the value through a variable so no quoting is needed.
-  vim.g.__artemis_optval = convert.to_vim(value)
+  vim.g.ArtemisOptval = convert.to_vim(value)
   local prefix = opts.scope == 'local' and '&l:' or opts.scope == 'global' and '&g:' or '&'
-  host.exec('let ' .. prefix .. n .. ' = g:__artemis_optval')
+  host.exec('let ' .. prefix .. n .. ' = g:ArtemisOptval')
 end
 
 local function check_var(name)
@@ -163,14 +196,14 @@ return function(A)
 
   function A.nvim_set_var(name, value)
     check_var(name)
-    vim.g.__artemis_varval = convert.to_vim(value)
-    host.exec('let g:' .. name .. ' = g:__artemis_varval')
+    vim.g.ArtemisVarval = convert.to_vim(value)
+    host.exec('let g:' .. name .. ' = g:ArtemisVarval')
   end
 
   function A.nvim_set_vvar(name, value)
     check_var(name)
-    vim.g.__artemis_varval = convert.to_vim(value)
-    host.exec('let v:' .. name .. ' = g:__artemis_varval')
+    vim.g.ArtemisVarval = convert.to_vim(value)
+    host.exec('let v:' .. name .. ' = g:ArtemisVarval')
   end
 
   function A.nvim_del_var(name)

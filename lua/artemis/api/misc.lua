@@ -187,6 +187,59 @@ return function(A)
     return F.hlID(name)
   end
 
+  local function to_nvim_hl(d)
+    local out = {}
+    local function color(c)
+      if type(c) == 'string' and c:match('^#%x%x%x%x%x%x$') then
+        return tonumber(c:sub(2), 16)
+      end
+      return c
+    end
+    if d.linksto then
+      out.link = d.linksto
+    end
+    if d.guifg then out.fg = color(d.guifg) end
+    if d.guibg then out.bg = color(d.guibg) end
+    if d.guisp then out.sp = color(d.guisp) end
+    if d.ctermfg then out.ctermfg = tonumber(d.ctermfg) or d.ctermfg end
+    if d.ctermbg then out.ctermbg = tonumber(d.ctermbg) or d.ctermbg end
+    for _, key in ipairs({ 'gui', 'cterm' }) do
+      for a, on in pairs(d[key] or {}) do
+        if on then out[a] = true end
+      end
+    end
+    if d.default then out.default = true end
+    return out
+  end
+
+  function A.nvim_get_hl(ns, opts)
+    opts = opts or {}
+    local resolve = opts.link == false
+    if opts.name or opts.id then
+      local name = opts.name or F.synIDattr(opts.id, 'name')
+      local list = F.hlget(name, resolve)
+      if #list == 0 then
+        return {}
+      end
+      return to_nvim_hl(list[1])
+    end
+    local all = {}
+    for _, d in ipairs(F.hlget(nil, resolve)) do
+      all[d.name] = to_nvim_hl(d)
+    end
+    return all
+  end
+
+  function A.nvim_list_uis()
+    return {}
+  end
+  function A.nvim_get_chan_info()
+    return {}
+  end
+  function A.nvim_list_chans()
+    return {}
+  end
+
   local attrs = { 'bold', 'italic', 'underline', 'undercurl', 'strikethrough', 'reverse', 'standout' }
   function A.nvim_set_hl(ns, name, val)
     local def = { name = name }

@@ -21,21 +21,52 @@ if M.kind == 'nvim' then
   end
 else
   local vcall, veval = vim.call, vim.eval
+  local vlua = require('artemis.core.vlua')
+  local g = vim.g
 
-  function M.eval(expr)
-    local ok, res = pcall(veval, expr)
-    if not ok then
-      error('E15: Invalid expression: ' .. expr, 0)
+  -- All Vim-level calls go through a helper that catches errors *inside*
+  -- Vim and returns them as data. Letting an error escape into Lua leaves a
+  -- pending exception behind when an outer :try is active, which would break
+  -- `pcall(vim.fn.xxx)` in plugins (and print a message).
+  vcall(
+    'execute',
+    table.concat({
+      'function! ArtemisCall(name, args) abort',
+      '  try',
+      '    return [0, call(a:name, a:args)]',
+      '  catch',
+      '    return [1, substitute(v:exception, "^Vim\\%((\\w\\+)\\)\\=:", "", "")]',
+      '  endtry',
+      'endfunction',
+    }, '\n')
+  )
+
+  function M.call(name, ...)
+    local n = select('#', ...)
+    local args = { ... }
+    if n > 0 and (name == 'eval' or name == 'execute') then
+      args[1] = vlua.rewrite(args[1])
     end
-    return res
+    local list = vim.list()
+    for i = 1, n do
+      list:add(args[i])
+    end
+    local r = vcall('ArtemisCall', name, list)
+    if r[1] ~= 0 then
+      error(r[2], 0)
+    end
+    return r[2]
   end
 
-  -- vim.command() and execute() swallow errors, so run the command through
-  -- `:execute` inside a one-line :try and read the exception from a variable.
-  -- (A multi-line try block would let `:command` etc. swallow the next lines.)
-  local g = vim.g
+  function M.eval(expr)
+    return M.call('eval', expr)
+  end
+
+  -- `:execute` inside a one-line :try; the exception text is read back from
+  -- a variable. (A multi-line try block would let `:command` etc. swallow the
+  -- following lines.) Runs at global scope so plain `:let x` stays global.
   function M.exec(cmd)
-    g.__artemis_cmd = cmd
+    g.__artemis_cmd = vlua.rewrite(cmd)
     g.__artemis_exc = ''
     local out = vcall(
       'execute',
@@ -47,19 +78,12 @@ else
     end
     return (out:gsub('^\n', ''))
   end
+end
 
-  function M.call(name, ...)
-    vcall('execute', 'let v:errmsg = ""')
-    local res = { pcall(vcall, name, ...) }
-    if not res[1] then
-      local msg = veval('v:errmsg')
-      if msg == '' then
-        msg = tostring(res[2])
-      end
-      error(msg, 0)
-    end
-    return res[2]
-  end
+--- Call a Vim function with an explicit argument count (nil -> v:null).
+function M.call_args(name, n, args)
+  local unpack = unpack or table.unpack
+  return M.call(name, unpack(args, 1, n))
 end
 
 M.native_fn = native_fn

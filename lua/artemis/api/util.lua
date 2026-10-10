@@ -13,8 +13,7 @@ M.F = setmetatable({}, {
       for i = 1, n do
         args[i] = convert.to_vim(args[i])
       end
-      local unpack = unpack or table.unpack
-      return convert.from_vim(host.call(name, unpack(args, 1, n)))
+      return convert.from_vim(host.call_args(name, n, args))
     end
     rawset(t, name, f)
     return f

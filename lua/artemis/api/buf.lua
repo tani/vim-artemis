@@ -51,6 +51,9 @@ return function(A)
     local n = u.linecount(b)
     s, e = u.norm_range(s, e, n, strict)
     local old, new = e - s, #repl
+    -- Vim drops text properties of rewritten lines; carry extmarks over,
+    -- collapsing marks inside the replaced region to its start.
+    local saved = (old > 0 and not A._ext_suspend) and A._ext_save(b, s, e - 1) or nil
     local common = math.min(old, new)
     if common > 0 then
       local part = {}
@@ -73,6 +76,11 @@ return function(A)
       if F.deletebufline(b, s + new + 1, e) ~= 0 then
         error('Failed to delete lines', 2)
       end
+    end
+    if saved then
+      A._ext_restore(b, saved, function(row, col)
+        return s, 0
+      end)
     end
   end
 
@@ -108,9 +116,30 @@ return function(A)
     if #new == 0 then
       new[1] = ''
     end
+    local tail_len = #new[#new]
     new[1] = first:sub(1, scol) .. new[1]
     new[#new] = new[#new] .. last:sub(ecol + 1)
-    A.nvim_buf_set_lines(b, srow, erow + 1, false, new)
+    local saved = A._ext_save(b, srow, erow)
+    A._ext_suspend = true
+    local ok, err = pcall(A.nvim_buf_set_lines, b, srow, erow + 1, false, new)
+    A._ext_suspend = false
+    if not ok then
+      error(err, 0)
+    end
+    A._ext_restore(b, saved, function(row, col)
+      if row < srow or (row == srow and col < scol) then
+        return row, col
+      elseif row < erow or (row == erow and col < ecol) then
+        return srow, scol
+      end
+      local nrow = row - erow + srow + (#new - 1)
+      local ncol = col
+      if row == erow then
+        local base = (#new == 1) and scol or 0
+        ncol = col - ecol + base + tail_len
+      end
+      return nrow, ncol
+    end)
   end
 
   function A.nvim_buf_get_name(b)

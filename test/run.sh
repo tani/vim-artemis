@@ -9,8 +9,8 @@ hosts=${*:-"nvim vim"}
 for h in $hosts; do
   export ARTEMIS_OUT=$(mktemp)
   case $h in
-    nvim) nvim --headless -u NONE -i NONE -c "luafile test/run.lua" -c "qa!" >/dev/null 2>&1 ;;
-    vim)  vim -es -u NONE -i NONE -N -c "luafile test/run.lua" -c "qa!" >/dev/null 2>&1 ;;
+    nvim) timeout 120 nvim --headless -u NONE -i NONE -c "luafile test/run.lua" -c "qa!" >/dev/null 2>&1 ;;
+    vim)  TERM=dumb timeout 120 vim -u NONE -i NONE -N --not-a-term -c "luafile test/run.lua" -c "qa!" </dev/null >/dev/null 2>&1 ;;
   esac
   cat "$ARTEMIS_OUT"
   tail -n 1 "$ARTEMIS_OUT" | grep -q ' 0 failed$' || rc=1

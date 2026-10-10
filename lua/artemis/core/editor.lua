@@ -24,6 +24,8 @@ local fn_shims = {
       cache = (os.getenv('XDG_CACHE_HOME') or (home .. '/.cache')) .. '/nvim',
       state = (os.getenv('XDG_STATE_HOME') or (home .. '/.local/state')) .. '/nvim',
     }
+    dirs.log = dirs.state
+    dirs.run = (os.getenv('TMPDIR') or '/tmp') .. '/nvim'
     if what == 'config_dirs' or what == 'data_dirs' then
       return {}
     end
@@ -33,6 +35,16 @@ local fn_shims = {
     return dirs[what]
   end,
 }
+
+local function job_shims()
+  local job = require('artemis.core.job')
+  fn_shims.jobstart = job.jobstart
+  fn_shims.jobstop = job.jobstop
+  fn_shims.chansend = job.chansend
+  fn_shims.chanclose = job.chanclose
+  fn_shims.jobpid = job.jobpid
+  fn_shims.jobwait = job.jobwait
+end
 
 local function make_fn()
   return setmetatable({}, {
@@ -48,8 +60,7 @@ local function make_fn()
           for i = 1, n do
             args[i] = convert.to_vim(args[i])
           end
-          local unpack = unpack or table.unpack
-          return convert.from_vim(host.call(name, unpack(args, 1, n)))
+          return convert.from_vim(host.call_args(name, n, args))
         end
       end
       rawset(t, name, f)
@@ -119,8 +130,8 @@ local function install_vars()
     end
     return convert.from_vim(v)
   end, function(k, v)
-    vim.g.__artemis_varval = convert.to_vim(v)
-    host.exec('let v:' .. k .. ' = g:__artemis_varval')
+    vim.g.ArtemisVarval = convert.to_vim(v)
+    host.exec('let v:' .. k .. ' = g:ArtemisVarval')
   end)
 
   local function setvar(setter, unsetter)
@@ -203,6 +214,17 @@ local function install_misc()
     F.timer_start(0, function()
       fn()
     end)
+  end
+
+  function vim.schedule_wrap(fn)
+    return function(...)
+      local args = { ... }
+      local n = select('#', ...)
+      vim.schedule(function()
+        local unpack = unpack or table.unpack
+        fn(unpack(args, 1, n))
+      end)
+    end
   end
 
   function vim.defer_fn(fn, timeout)
@@ -322,6 +344,32 @@ local function install_misc()
     return i - 1
   end
 
+  function vim.keycode(str)
+    return vim.api.nvim_replace_termcodes(str, true, true, true)
+  end
+
+  function vim.regex(re)
+    local obj = {}
+    function obj:match_str(s)
+      local r = F.matchstrpos(s, re)
+      if r[2] < 0 then
+        return nil
+      end
+      return r[2], r[3]
+    end
+    function obj:match_line(buf, line, s, e)
+      local text = F.getbufline(buf == 0 and F.bufnr('%') or buf, line + 1, line + 1)[1] or ''
+      s = s or 0
+      local sub = text:sub(s + 1, e)
+      local r = F.matchstrpos(sub, re)
+      if r[2] < 0 then
+        return nil
+      end
+      return r[2] + s, r[3] + s
+    end
+    return obj
+  end
+
   vim.json = vim.json or {
     encode = function(obj)
       return F.json_encode(obj)
@@ -337,11 +385,17 @@ function M.setup()
   if host.kind ~= 'vim' then
     return
   end
+  job_shims()
   vim.fn = make_fn()
   vim.api = require('artemis.api.init')
+  vim.uv = require('artemis.core.uv')
+  vim.loop = vim.uv
+  vim.system = require('artemis.core.job').system
+  vim.fs = require('artemis.vendor.nvim.fs')
   install_vars()
   install_cmd()
   install_misc()
+  require('artemis.core.stubs').setup()
   -- Neovim's own pure-Lua implementations on top of vim.api.
   require('artemis.vendor.nvim._options')
   vim.keymap = require('artemis.vendor.nvim.keymap')

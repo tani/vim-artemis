@@ -217,6 +217,8 @@ local function set_keymap(buf, mode, lhs, rhs, opts)
     end
   elseif type(rhs) ~= 'string' then
     error('rhs must be a string or function', 3)
+  else
+    mrhs = require('artemis.core.vlua').rewrite(rhs)
   end
   local raw = M.replace_termcodes(lhs, true, true, true)
   local def = {
@@ -362,6 +364,8 @@ return setmetatable(M, {
       local events = as_list(event)
       local specs = {}
       for _, ev in ipairs(events) do
+       -- Neovim-only events (TermOpen, LspAttach, ...) never fire on Vim.
+       if F.exists('##' .. ev) ~= 0 then
         local body
         if opts.callback then
           if not id then
@@ -391,11 +395,14 @@ return setmetatable(M, {
           once = opts.once and 1 or 0,
           ['nested'] = opts.nested and 1 or 0,
         }
+       end
       end
       if not id then
         id = registry.add(function() end)
       end
-      F.autocmd_add(specs)
+      if #specs > 0 then
+        F.autocmd_add(specs)
+      end
       return id
     end
 
@@ -431,12 +438,14 @@ return setmetatable(M, {
       autocmd_data = opts.data
       local function run()
         for _, ev in ipairs(as_list(event)) do
+         if F.exists('##' .. ev) ~= 0 then
           local cmd = 'silent doautocmd '
             .. (opts.modeline == false and '<nomodeline> ' or '')
             .. (group and (group .. ' ') or '')
             .. ev
             .. (pat and (' ' .. pat) or '')
           host.exec(cmd)
+         end
         end
       end
       local ok, err
