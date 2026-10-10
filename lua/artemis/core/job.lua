@@ -103,6 +103,11 @@ function M.jobstop(id)
   if not j then
     return 0
   end
+  if j.term then
+    F.term_setkill(j.term, 'term')
+    pcall(vim.cmd, 'silent! bwipeout! ' .. j.term)
+    return 1
+  end
   F.ArtemisJobStop(j.handle)
   return 1
 end
@@ -115,13 +120,47 @@ function M.chansend(id, data)
   if type(data) == 'table' then
     data = table.concat(data, '\n')
   end
-  F.ArtemisChanSend(j.channel, data)
+  if j.term then
+    F.term_sendkeys(j.term, data)
+  else
+    F.ArtemisChanSend(j.channel, data)
+  end
   return #data
+end
+
+--- termopen(): run `cmd` in a terminal in the current window (Vim terminal).
+--- Only on_exit is supported; terminal output is not delivered to callbacks.
+function M.termopen(cmd, opts)
+  opts = opts or {}
+  next_id = next_id + 1
+  local id = next_id
+  local job = { id = id, closed = 2 }
+  jobs[id] = job
+  local vopts = { curwin = 1, term_finish = 'open' }
+  if opts.cwd then
+    vopts.cwd = opts.cwd
+  end
+  if opts.env then
+    vopts.env = opts.env
+  end
+  vopts.exit_cb = function(_, code)
+    job.exited, job.finished = code, true
+    if opts.on_exit then
+      opts.on_exit(id, code, 'exit')
+    end
+  end
+  local argv = to_argv(cmd)
+  job.term = F.term_start(argv, vopts)
+  if job.term == 0 then
+    jobs[id] = nil
+    return -1
+  end
+  return id
 end
 
 function M.chanclose(id, stream)
   local j = jobs[id]
-  if j and (stream == nil or stream == 'stdin') then
+  if j and not j.term and (stream == nil or stream == 'stdin') then
     F.ArtemisChanCloseIn(j.channel)
   end
   return 1
@@ -129,7 +168,7 @@ end
 
 function M.jobpid(id)
   local j = jobs[id]
-  if not j then
+  if not j or j.term then
     error('Invalid channel id', 2)
   end
   return F.ArtemisJobInfo(j.handle).process

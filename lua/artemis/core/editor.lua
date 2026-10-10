@@ -61,6 +61,39 @@ local function job_shims()
   fn_shims.chanclose = job.chanclose
   fn_shims.jobpid = job.jobpid
   fn_shims.jobwait = job.jobwait
+  fn_shims.jobsend = job.chansend
+  fn_shims.jobclose = job.chanclose
+  fn_shims.jobresize = function() return 1 end
+  fn_shims.termopen = job.termopen
+  fn_shims.wait = function(timeout, cond, interval)
+    local ok, status = vim.wait(timeout, function()
+      local c = cond
+      if type(c) == 'string' then
+        return host.eval(c) ~= 0
+      end
+      return c() ~= 0 and c() ~= false
+    end, interval or 200)
+    return ok and 0 or (status or -1)
+  end
+  fn_shims.api_info = function()
+    local names = {}
+    for k in pairs(vim.api) do
+      if type(k) == 'string' and k:match('^nvim_') then
+        names[#names + 1] = { name = k }
+      end
+    end
+    return {
+      version = { major = NVIM_EMU[1], minor = NVIM_EMU[2], patch = NVIM_EMU[3], api_level = 12,
+        api_compatible = 0, api_prerelease = false },
+      functions = names,
+    }
+  end
+  for _, name in ipairs({ 'rpcrequest', 'rpcnotify', 'rpcstart', 'rpcstop', 'sockconnect', 'serverstart',
+    'serverstop', 'stdioopen' }) do
+    fn_shims[name] = function()
+      error('artemis: vim.fn.' .. name .. '() (RPC) is not supported on Vim', 0)
+    end
+  end
 end
 
 local function make_fn()
