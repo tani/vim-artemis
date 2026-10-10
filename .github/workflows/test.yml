@@ -51,8 +51,19 @@ jobs:
       - name: Fetch plugins
         run: |
           git clone --depth 1 https://github.com/echasnovski/mini.nvim /tmp/mini.nvim
+          git clone --depth 1 https://github.com/nvim-lua/plenary.nvim /tmp/plenary.nvim
       - name: Behaviour checks (mini.nvim)
         run: |
           out=$(test/plugins/behavior.sh ${{ matrix.host }} /tmp/mini.nvim)
           echo "$out"
           ! echo "$out" | grep -q '^FAIL'
+      - name: plenary.job / plenary.async
+        run: |
+          export ARTEMIS_ROOT=$PWD SMOKE_PLUGINS=/tmp/plenary.nvim ARTEMIS_OUT=$(mktemp)
+          if [ "${{ matrix.host }}" = vim ]; then
+            TERM=dumb vim -u NONE -i NONE -N --not-a-term -c "luafile test/plugins/plenary_job.lua" -c "qa!" </dev/null >/dev/null 2>&1 || true
+          else
+            nvim --headless -u NONE -i NONE -c "luafile test/plugins/plenary_job.lua" -c "qa!" >/dev/null 2>&1 || true
+          fi
+          cat "$ARTEMIS_OUT"
+          ! grep -q ERROR "$ARTEMIS_OUT" && grep -q 'async lib: true' "$ARTEMIS_OUT"

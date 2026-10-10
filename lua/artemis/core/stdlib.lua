@@ -113,6 +113,10 @@ function M.setup()
   if host.kind == 'nvim' and vim.uv == nil then
     vim.uv = vim.loop -- Neovim < 0.10
   end
+  if host.kind == 'nvim' and vim.system == nil then
+    -- Neovim < 0.10: the vendored implementation runs on vim.uv.spawn
+    vim.system = require(vendor .. '_system').run
+  end
 
   if host.kind == 'nvim' and vim.keycode == nil then
     vim.keycode = function(str)

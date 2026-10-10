@@ -200,7 +200,13 @@ function M.os_uname()
   return uname
 end
 function M.os_getpid()
-  return tonumber(F.getpid and 0 or 0)
+  local fh = io.open('/proc/self/stat', 'r')
+  if fh then
+    local pid = fh:read('*l'):match('^(%d+)')
+    fh:close()
+    return tonumber(pid)
+  end
+  return 0
 end
 function M.available_parallelism()
   return 1
@@ -286,8 +292,193 @@ function M.fs_fstat(fd, cb)
   return finish(cb, nil, { type = 'file', size = size })
 end
 
+
+--------------------------------------------------------- pipes and spawn
+local Pipe = {}
+Pipe.__index = Pipe
+
+function M.new_pipe(ipc)
+  return setmetatable({ _queue = {}, _eof = false, _closed = false }, Pipe)
+end
+
+local function deliver(pipe)
+  while pipe._cb and #pipe._queue > 0 do
+    local chunk = table.remove(pipe._queue, 1)
+    if chunk == false then
+      pipe._cb(nil, nil)
+    else
+      pipe._cb(nil, chunk)
+    end
+  end
+end
+
+function Pipe:read_start(cb)
+  self._cb = cb
+  deliver(self)
+  return 0
+end
+function Pipe:read_stop()
+  self._cb = nil
+  return 0
+end
+function Pipe:write(data, cb)
+  if not self._chan then
+    return nil, 'EPIPE: broken pipe', 'EPIPE'
+  end
+  if type(data) == 'table' then
+    data = table.concat(data)
+  end
+  F.ArtemisChanSend(self._chan, data)
+  if cb then
+    F.timer_start(0, function() cb(nil) end)
+  end
+  return {}
+end
+function Pipe:shutdown(cb)
+  if self._chan then
+    pcall(F.ArtemisChanCloseIn, self._chan)
+  end
+  if cb then
+    F.timer_start(0, function() cb(nil) end)
+  end
+  return {}
+end
+function Pipe:close()
+  if self._chan and not self._closed then
+    -- closing a child's stdin pipe signals EOF to it
+    pcall(F.ArtemisChanCloseIn, self._chan)
+  end
+  self._closed = true
+  self._cb = nil
+end
+function Pipe:is_closing()
+  return self._closed
+end
+function Pipe:is_readable()
+  return not self._eof
+end
+function Pipe:is_writable()
+  return self._chan ~= nil
+end
+function Pipe:unref() end
+function Pipe:ref() end
+
+local Process = {}
+Process.__index = Process
+function Process:kill(sig)
+  return M.process_kill(self, sig)
+end
+function Process:close()
+  self._closed = true
+end
+function Process:is_closing()
+  return self._closed
+end
+function Process:get_pid()
+  return self.pid
+end
+function Process:ref() end
+function Process:unref() end
+
+local signals = { [1] = 'hup', [2] = 'int', [3] = 'quit', [9] = 'kill', [15] = 'term' }
+local function signame(sig)
+  if type(sig) == 'number' then
+    return signals[sig] or 'term'
+  end
+  sig = tostring(sig or 'sigterm'):lower():gsub('^sig', '')
+  return sig
+end
+
+function M.process_kill(proc, sig)
+  if proc._job then
+    F.ArtemisJobStop(proc._job, signame(sig))
+  end
+  return 0
+end
+
+function M.kill(pid, sig)
+  local name = signame(sig)
+  F.system({ 'kill', '-' .. (name == 'term' and 'TERM' or name:upper()), tostring(pid) })
+  return 0
+end
+
+function M.spawn(path, opts, on_exit)
+  opts = opts or {}
+  local cmd = { path }
+  for _, a in ipairs(opts.args or {}) do
+    cmd[#cmd + 1] = a
+  end
+  local stdio = opts.stdio or {}
+  local pin, pout, perr = stdio[1], stdio[2], stdio[3]
+  local proc = setmetatable({ _closed = false }, Process)
+  local closed, exited = 0, nil
+  local function maybe_exit()
+    if exited ~= nil and closed >= 2 and not proc._exit_called then
+      proc._exit_called = true
+      if on_exit then
+        on_exit(exited, 0)
+      end
+    end
+  end
+  local function feeder(pipe)
+    return function(_, msg)
+      if pipe and type(pipe) == 'table' then
+        pipe._queue[#pipe._queue + 1] = msg
+        deliver(pipe)
+      end
+    end
+  end
+  local vopts = {
+    mode = 'raw',
+    in_io = pin and 'pipe' or 'null',
+    out_io = pout and 'pipe' or 'null',
+    err_io = perr and 'pipe' or 'null',
+    out_cb = feeder(pout),
+    err_cb = feeder(perr),
+    exit_cb = function(_, code)
+      exited = code
+      maybe_exit()
+    end,
+    close_cb = function()
+      for _, p in ipairs({ pout, perr }) do
+        if p then
+          p._eof = true
+          p._queue[#p._queue + 1] = false
+          deliver(p)
+        end
+      end
+      closed = 2
+      maybe_exit()
+    end,
+  }
+  if opts.cwd then
+    vopts.cwd = opts.cwd
+  end
+  if opts.env then
+    local env = {}
+    for _, kv in ipairs(opts.env) do
+      local k, v = kv:match('^([^=]*)=(.*)$')
+      if k then
+        env[k] = v
+      end
+    end
+    vopts.env = env
+  end
+  local job = F.ArtemisJobStart(cmd, vopts)
+  if F.ArtemisJobStatus(job) == 'fail' then
+    return nil, 'ENOENT: no such file or directory: ' .. path, 'ENOENT'
+  end
+  proc._job = job
+  proc.pid = F.ArtemisJobInfo(job).process
+  local chan = job
+  if pin then
+    pin._chan = chan
+  end
+  return proc, proc.pid
+end
+
 -- Features we cannot offer fail loudly instead of silently.
-for _, name in ipairs({ 'new_pipe', 'new_tcp', 'new_udp', 'new_fs_event', 'new_fs_poll', 'new_signal', 'new_tty' }) do
+for _, name in ipairs({ 'new_tcp', 'new_udp', 'new_fs_event', 'new_fs_poll', 'new_signal', 'new_tty' }) do
   M[name] = function()
     error('artemis: vim.uv.' .. name .. ' is not supported on Vim', 2)
   end
@@ -328,6 +519,29 @@ end
 M.new_idle = loop_handle
 M.new_check = loop_handle
 M.new_prepare = loop_handle
+
+-- luv exposes every handle method also as a plain function: uv.close(h),
+-- uv.is_active(h), uv.timer_start(t, ...), uv.read_start(pipe, cb), ...
+local same = {
+  'is_active', 'is_closing', 'close', 'ref', 'unref', 'has_ref', 'read_start', 'read_stop',
+  'write', 'shutdown', 'is_readable', 'is_writable',
+}
+for _, name in ipairs(same) do
+  M[name] = M[name] or function(h, ...)
+    return h[name](h, ...)
+  end
+end
+local renamed = {
+  timer_start = 'start', timer_stop = 'stop', timer_again = 'again', timer_set_repeat = 'set_repeat',
+  timer_get_repeat = 'get_repeat', timer_get_due_in = 'get_due_in', async_send = 'send',
+  check_start = 'start', check_stop = 'stop', idle_start = 'start', idle_stop = 'stop',
+  prepare_start = 'start', prepare_stop = 'stop',
+}
+for fname, method in pairs(renamed) do
+  M[fname] = M[fname] or function(h, ...)
+    return h[method](h, ...)
+  end
+end
 
 function M.run() end
 function M.stop() end

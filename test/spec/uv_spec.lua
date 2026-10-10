@@ -1,0 +1,81 @@
+local uv = vim.uv or vim.loop
+
+describe('vim.uv', function()
+  it('timer fires', function()
+    local hit = 0
+    local t = uv.new_timer()
+    t:start(5, 0, function() hit = hit + 1 end)
+    eq(vim.wait(1000, function() return hit == 1 end, 5), true)
+    t:close()
+  end)
+  it('repeating timer + stop', function()
+    local hit = 0
+    local t = uv.new_timer()
+    t:start(5, 5, function() hit = hit + 1 end)
+    vim.wait(1000, function() return hit >= 3 end, 5)
+    t:stop()
+    t:close()
+    eq(hit >= 3, true)
+  end)
+  it('fs_stat', function()
+    local st = uv.fs_stat(vim.fn.getcwd())
+    eq(st.type, 'directory')
+    eq(uv.fs_stat('/definitely/not/here'), nil)
+  end)
+  it('spawn with stdout pipe', function()
+    local out, code = '', nil
+    local stdout = uv.new_pipe(false)
+    local handle = uv.spawn('echo', { args = { 'hello' }, stdio = { nil, stdout, nil } }, function(c) code = c end)
+    stdout:read_start(function(_, data)
+      if data then out = out .. data end
+    end)
+    eq(vim.wait(3000, function() return code ~= nil end, 10), true)
+    eq(out, 'hello\n')
+    eq(code, 0)
+    handle:close()
+  end)
+  it('spawn with stdin pipe', function()
+    local out, code = '', nil
+    local stdin, stdout = uv.new_pipe(false), uv.new_pipe(false)
+    uv.spawn('cat', { stdio = { stdin, stdout, nil } }, function(c) code = c end)
+    stdout:read_start(function(_, data)
+      if data then out = out .. data end
+    end)
+    stdin:write('ping')
+    stdin:shutdown()
+    eq(vim.wait(3000, function() return code ~= nil end, 10), true)
+    eq(out, 'ping')
+  end)
+end)
+
+describe('jobs', function()
+  it('vim.system', function()
+    local r = vim.system({ 'echo', 'sys' }, { text = true }):wait()
+    eq(r.code, 0)
+    eq(r.stdout, 'sys\n')
+  end)
+  it('jobstart with callbacks', function()
+    local got, code = {}, nil
+    local id = vim.fn.jobstart({ 'echo', 'jb' }, {
+      stdout_buffered = true,
+      on_stdout = function(_, data) got = data end,
+      on_exit = function(_, c) code = c end,
+    })
+    eq(id > 0, true)
+    eq(vim.wait(3000, function() return code ~= nil end, 10), true)
+    eq(got[1], 'jb')
+  end)
+end)
+
+describe('vendored vim._system on vim.uv.spawn', function()
+  it('runs a command and collects output', function()
+    local sys = require('artemis.vendor.nvim._system')
+    local r = sys.run({ 'sh', '-c', 'echo out; echo err 1>&2; exit 3' }, { text = true }):wait()
+    eq({ r.code, r.stdout, r.stderr }, { 3, 'out\n', 'err\n' })
+  end)
+  it('writes stdin', function()
+    local sys = require('artemis.vendor.nvim._system')
+    local r = sys.run({ 'cat' }, { stdin = 'from stdin', text = true }):wait()
+    eq(r.stdout, 'from stdin')
+  end)
+end)

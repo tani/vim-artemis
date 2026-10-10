@@ -41,6 +41,40 @@ else
     }, '\n')
   )
 
+  -- Vim job/channel objects cannot be represented in Lua; keep them on the
+  -- Vim side and hand out numeric ids instead.
+  vcall(
+    'execute',
+    table.concat({
+      'let g:ArtemisObjs = {}',
+      'let g:ArtemisNext = 0',
+      'function! ArtemisJobStart(cmd, opts) abort',
+      '  let l:job = job_start(a:cmd, a:opts)',
+      '  let g:ArtemisNext += 1',
+      '  let g:ArtemisObjs[g:ArtemisNext] = {"job": l:job, "chan": job_getchannel(l:job)}',
+      '  return g:ArtemisNext',
+      'endfunction',
+      'function! ArtemisJobStatus(id) abort',
+      '  return has_key(g:ArtemisObjs, a:id) ? job_status(g:ArtemisObjs[a:id].job) : "dead"',
+      'endfunction',
+      'function! ArtemisJobStop(id, ...) abort',
+      '  return has_key(g:ArtemisObjs, a:id) ? call("job_stop", [g:ArtemisObjs[a:id].job] + a:000) : 0',
+      'endfunction',
+      'function! ArtemisJobInfo(id) abort',
+      '  return has_key(g:ArtemisObjs, a:id) ? job_info(g:ArtemisObjs[a:id].job) : {}',
+      'endfunction',
+      'function! ArtemisChanSend(id, data) abort',
+      '  call ch_sendraw(g:ArtemisObjs[a:id].chan, a:data)',
+      'endfunction',
+      'function! ArtemisChanCloseIn(id) abort',
+      '  call ch_close_in(g:ArtemisObjs[a:id].chan)',
+      'endfunction',
+      'function! ArtemisJobRelease(id) abort',
+      '  call remove(g:ArtemisObjs, a:id)',
+      'endfunction',
+    }, '\n')
+  )
+
   function M.call(name, ...)
     local n = select('#', ...)
     local args = { ... }

@@ -89,12 +89,12 @@ function M.jobstart(cmd, opts)
   if opts.stdin == 'null' then
     vopts.in_io = 'null'
   end
-  job.handle = F.job_start(to_argv(cmd), vopts)
-  if F.job_status(job.handle) == 'fail' then
+  job.handle = F.ArtemisJobStart(to_argv(cmd), vopts)
+  if F.ArtemisJobStatus(job.handle) == 'fail' then
     jobs[id] = nil
     return -1
   end
-  job.channel = F.job_getchannel(job.handle)
+  job.channel = job.handle
   return id
 end
 
@@ -103,7 +103,7 @@ function M.jobstop(id)
   if not j then
     return 0
   end
-  F.job_stop(j.handle)
+  F.ArtemisJobStop(j.handle)
   return 1
 end
 
@@ -115,14 +115,14 @@ function M.chansend(id, data)
   if type(data) == 'table' then
     data = table.concat(data, '\n')
   end
-  F.ch_sendraw(j.channel, data)
+  F.ArtemisChanSend(j.channel, data)
   return #data
 end
 
 function M.chanclose(id, stream)
   local j = jobs[id]
   if j and (stream == nil or stream == 'stdin') then
-    F.ch_close_in(j.channel)
+    F.ArtemisChanCloseIn(j.channel)
   end
   return 1
 end
@@ -132,7 +132,7 @@ function M.jobpid(id)
   if not j then
     error('Invalid channel id', 2)
   end
-  return F.job_info(j.handle).process
+  return F.ArtemisJobInfo(j.handle).process
 end
 
 function M.jobwait(ids, timeout)
@@ -171,14 +171,14 @@ function SystemObj:wait(timeout)
 end
 
 function SystemObj:kill(sig)
-  F.job_stop(self._job, sig == 9 and 'kill' or 'term')
+  F.ArtemisJobStop(self._job, sig == 9 and 'kill' or 'term')
 end
 
 function SystemObj:write(data)
   if data == nil then
-    F.ch_close_in(self._chan)
+    F.ArtemisChanCloseIn(self._chan)
   else
-    F.ch_sendraw(self._chan, type(data) == 'table' and table.concat(data) or data)
+    F.ArtemisChanSend(self._chan, type(data) == 'table' and table.concat(data) or data)
   end
 end
 
@@ -246,12 +246,12 @@ function M.system(cmd, opts, on_exit)
   if opts.env then
     vopts.env = opts.env
   end
-  obj._job = F.job_start(cmd, vopts)
-  if F.job_status(obj._job) == 'fail' then
+  obj._job = F.ArtemisJobStart(cmd, vopts)
+  if F.ArtemisJobStatus(obj._job) == 'fail' then
     error('ENOENT: no such file or directory (cmd): ' .. tostring(cmd[1]), 2)
   end
-  obj._chan = F.job_getchannel(obj._job)
-  obj.pid = F.job_info(obj._job).process
+  obj._chan = obj._job
+  obj.pid = F.ArtemisJobInfo(obj._job).process
   if opts.stdin then
     if type(opts.stdin) == 'string' or type(opts.stdin) == 'table' then
       obj:write(opts.stdin)
