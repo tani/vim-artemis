@@ -75,7 +75,8 @@ return function(A)
 
   function A.nvim_call_function(name, args)
     local unpack = unpack or table.unpack
-    return F[name](unpack(args or {}, 1, #(args or {})))
+    -- go through vim.fn so Neovim-only functions (stdpath, jobstart, ...) work
+    return vim.fn[name](unpack(args or {}, 1, #(args or {})))
   end
 
   function A.nvim_get_current_line()
