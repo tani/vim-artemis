@@ -1,5 +1,8 @@
 # vim-artemis v2 設計
 
+> **実装状況 (2026-10)**: P0〜P5 の主要部分を実装済み。決定事項と実測結果は
+> 末尾の「実装ノート」を参照。逆方向(Vim 専用機能の Neovim 上エミュレーション, P6)は未着手。
+
 ## 1. 目標と非目標
 
 **目標**
@@ -138,9 +141,40 @@ docs/{design.md,compat-table.md}
 - **性能**: 文字列 eval の往復が多い。`call` を多用し、`convert` はテーブル走査を最小化。バッファ全行取得などはバルク API を使う。
 - **スコープ膨張**: 階層 C を明文化し、LSP/Treesitter は対象外と宣言。
 
-## 8. 決めたいこと(要確認)
+## 8. 決定事項
 
-1. 最低サポート: Vim 9.0+ / Neovim 0.9+ でよいか。
-2. 標準ライブラリはクリーンルーム実装(推奨)か、Neovim ソースのコピー(Apache-2.0 表記)か。
-3. 優先ターゲットプラグイン(上記候補以外に動かしたいもの)。
-4. 逆方向(Vim 専用機能の Neovim 上エミュレーション)の優先度。P6 まで後回しでよいか。
+1. 最低サポート: Vim 9.0+ (`+lua`) / Neovim 0.9+。CI で検証しているのは Vim 9.1 と Neovim stable/nightly。
+2. 標準ライブラリは **Neovim v0.10.4 のソースをそのままコピー**(`lua/artemis/vendor/`、Apache-2.0/MIT 表記は `NOTICE.md`)。
+3. 方針は「互換性の最大化」: Neovim の純 Lua ランタイム(`shared`, `iter`, `inspect`, `_options`, `keymap`, `ui`, `fs`, `_system` …)を無改造で載せ、その下の `vim.api` / `vim.fn` / `vim.uv` を Vim 上に実装する。
+4. Vim 専用機能の Neovim 上エミュレーションは後回し。
+
+## 9. 実装ノート(P0 実測と実装で分かったこと)
+
+**Vim の `if_lua` の制約(実測)** — 設計に直接影響した点:
+
+- Lua は PUC Lua 5.1(JIT なし)。`goto`、`load(string)`、`xpcall(f, h, ...)`、`table.pack/unpack` が無い
+  → `core/luacompat.lua` が標準関数を補い、`goto continue` を `require` 時に `repeat ... until true` へ書き換える。
+- `vim.command()` / `execute()` はエラーを投げない。`vim.call` の失敗は詳細不明の文字列のみ。
+  `:try` の内側で起きた Vim エラーは、Lua の `pcall` で捕捉しても例外が保留されて外側へ漏れる
+  → 全呼び出しを Vim 側の `ArtemisCall()`(try/catch 内包)経由にしてエラーをデータとして受け取る。
+- list/dict/funcref は userdata(`pairs`/`ipairs` 不可)。job/channel は Lua に渡せない(nil になる)
+  → `core/convert.lua` で再帰変換し、job/channel は Vim 側の辞書に保持して数値 ID だけを Lua に渡す。
+- `nil` 引数が途中にあると引数が落ちる → `call(name, list)` 経由で `v:null` を渡す。
+- `v:lua` が存在しない → `core/vlua.lua` が `v:lua.f(args)` を `luaeval()` に書き換え、`operatorfunc` 等には Funcref を割り当てる。
+- テキストプロパティは `setbufline` で行を書き換えると消える → `nvim_buf_set_lines/set_text` の前後で extmark を保存・復元。
+- `prop_remove({id, type})` は OR 条件(`both = 1` が必要)。
+- popup ウィンドウには入れない(`win_gotoid` 不可)が、`win_execute` / `winbufnr` / `line('.', winid)` は使える
+  → 浮動ウィンドウは表示専用の popup として実装し、`nvim_win_call` は `win_execute` ベース。
+- `-es` (Ex モード) では `mode()` が `ce` になるなど挙動が違う → テストは `--not-a-term` の通常モードで実行。
+
+**検証結果**(同じ spec と実プラグインを Neovim=オラクルと Vim で実行):
+
+- `test/spec`: 93 件(Vim)/ 85 件(Neovim、Lua 5.1 専用の spec を除く)。
+- mini.nvim 全 46 モジュールが `require`+`setup` まで通り、主要モジュールはキー操作の結果が Neovim と一致。
+- Comment.nvim / nvim-autopairs / plenary(job, async)/ gitsigns / telescope / cmp / lualine / bufferline /
+  which-key / oil / nvim-tree / flash / todo-comments が Vim 上でロード・`setup()` 可能。
+- `vim.api` のカバレッジは `docs/compat-table.md`(`scripts/api_coverage.sh` で生成)。
+- 性能: 1 呼び出しあたり約 10〜50 µs(Neovim の約 50〜100 倍)。実用範囲だが、巨大バッファでの 1 行ずつの API 呼び出しは重い。
+
+**未対応/今後**: 浮動ウィンドウへの「入場」、`vim.lsp`/`vim.treesitter`/`vim.diagnostic` の実体(現状は空スタブ)、
+`nvim_eval_statusline`、`vim.uv` のソケット類、逆方向(P6)、Vim 9.0.x での検証。

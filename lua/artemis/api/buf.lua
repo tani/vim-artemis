@@ -37,13 +37,12 @@ return function(A)
   end
 
   function A.nvim_buf_get_lines(b, s, e, strict)
-    b = u.buf(b)
-    local n = u.linecount(b)
-    s, e = u.norm_range(s, e, n, strict)
-    if s >= e then
-      return {}
+    if not strict and s >= 0 and e >= -1 and type(b) == 'number' then
+      -- fast path (one Vim call); getbufline() clamps and returns {} for an
+      -- unknown buffer, so only the strict/negative cases need validation
+      return F.getbufline(b == 0 and '%' or b, s + 1, e == -1 and '$' or e)
     end
-    return F.getbufline(b, s + 1, e)
+    return F.ArtemisGetLines(b, s, e, strict and 1 or 0)
   end
 
   function A.nvim_buf_set_lines(b, s, e, strict, repl)

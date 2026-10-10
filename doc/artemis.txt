@@ -1,9 +1,23 @@
 artemis.txt                            Lua compatibility layer for Vim/ Neovim
 
 Description~
-    Vim-artemis is a Lua module for the compatibility between Vim and Neovim.
-    We aim at covering the Lua API for writing the Vim/ Neovim configuration
-    file in the single Lua file.
+    Vim-artemis is a Lua compatibility layer between Vim and Neovim.
+
+    1. Run Neovim Lua plugins on Vim. |artemis.inject| installs the Neovim
+       API (vim.api, vim.fn, vim.g/b/w/t/v, vim.o/opt, vim.keymap, vim.cmd,
+       vim.uv, vim.system, vim.schedule, vim.iter, vim.fs, extmarks, floating
+       windows as popups, ...) into Vim's `vim` table.
+    2. Write one configuration file for both editors with the original
+       `artemis.*` API described below.
+
+    Requirements: Vim 9.0+ with |+lua|, or Neovim 0.9+.
+    Differences from Neovim: see `docs/limitations.md`.
+
+*artemis.inject*
+    require('artemis.inject').setup()
+        Install the Neovim API into the running editor. Idempotent. On
+        Neovim only functions missing from older versions are added.
+        `require('artemis')` calls this automatically.
 
 Example~
 >

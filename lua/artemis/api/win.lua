@@ -53,8 +53,11 @@ return function(A)
   end
 
   function A.nvim_win_get_cursor(w)
-    w = u.win(w)
-    return { F.line('.', w), F.col('.', w) - 1 }
+    local pos = F.getcurpos(w or 0)
+    if pos[2] == 0 then
+      error('Invalid window id: ' .. tostring(w), 2)
+    end
+    return { pos[2], pos[3] - 1 }
   end
 
   function A.nvim_win_set_cursor(w, pos)

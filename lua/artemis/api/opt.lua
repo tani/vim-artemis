@@ -31,6 +31,8 @@ local function check_name(name)
   end
 end
 
+local exists_cache = {}
+
 -- Options that exist in Neovim but not in Vim (statuscolumn, winbar, ...):
 -- accepted and remembered, but without any effect on the editor.
 local shadow = {}
@@ -39,7 +41,12 @@ local shadow = {}
 local function info(name)
   check_name(name)
   local long, rec = resolve(name)
-  local present = truthy(host.eval('exists("+' .. (long or name) .. '")'))
+  local key = long or name
+  local present = exists_cache[key]
+  if present == nil then
+    present = truthy(host.eval('exists("+' .. key .. '")'))
+    exists_cache[key] = present
+  end
   if not present and not rec then
     error("Invalid option (not found): '" .. name .. "'", 3)
   end

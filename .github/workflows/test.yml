@@ -52,11 +52,16 @@ jobs:
         run: |
           git clone --depth 1 https://github.com/echasnovski/mini.nvim /tmp/mini.nvim
           git clone --depth 1 https://github.com/nvim-lua/plenary.nvim /tmp/plenary.nvim
+          git clone --depth 1 https://github.com/numToStr/Comment.nvim /tmp/Comment.nvim
+          git clone --depth 1 https://github.com/windwp/nvim-autopairs /tmp/nvim-autopairs
       - name: Behaviour checks (mini.nvim)
         run: |
           out=$(test/plugins/behavior.sh ${{ matrix.host }} /tmp/mini.nvim)
           echo "$out"
           ! echo "$out" | grep -q '^FAIL'
+      - name: Differential check (Comment.nvim, nvim-autopairs)
+        if: matrix.host == 'vim'
+        run: test/plugins/compare.sh behavior2 /tmp/Comment.nvim,/tmp/nvim-autopairs
       - name: plenary.job / plenary.async
         run: |
           export ARTEMIS_ROOT=$PWD SMOKE_PLUGINS=/tmp/plenary.nvim ARTEMIS_OUT=$(mktemp)
