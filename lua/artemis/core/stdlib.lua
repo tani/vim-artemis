@@ -110,6 +110,10 @@ function M.setup()
     end
   end
 
+  if host.kind == 'nvim' and vim.uv == nil then
+    vim.uv = vim.loop -- Neovim < 0.10
+  end
+
   if host.kind == 'nvim' and vim.keycode == nil then
     vim.keycode = function(str)
       return vim.api.nvim_replace_termcodes(str, true, true, true)

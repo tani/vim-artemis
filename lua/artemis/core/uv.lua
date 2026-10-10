@@ -292,9 +292,42 @@ for _, name in ipairs({ 'new_pipe', 'new_tcp', 'new_udp', 'new_fs_event', 'new_f
     error('artemis: vim.uv.' .. name .. ' is not supported on Vim', 2)
   end
 end
-function M.new_idle()
-  error('artemis: vim.uv.new_idle is not supported on Vim', 2)
+-- check / idle / prepare run once per loop iteration in libuv; approximate
+-- with a 10 ms repeating timer.
+local function loop_handle()
+  local h = { _closed = false }
+  function h:start(cb)
+    self:stop()
+    self._cb = cb
+    self._id = F.timer_start(10, function()
+      if not self._closed and self._cb then
+        self._cb()
+      end
+    end, { ['repeat'] = -1 })
+    return 0
+  end
+  function h:stop()
+    if self._id then
+      F.timer_stop(self._id)
+      self._id = nil
+    end
+    return 0
+  end
+  function h:close()
+    self:stop()
+    self._closed = true
+  end
+  function h:is_closing()
+    return self._closed
+  end
+  function h:is_active()
+    return self._id ~= nil
+  end
+  return h
 end
+M.new_idle = loop_handle
+M.new_check = loop_handle
+M.new_prepare = loop_handle
 
 function M.run() end
 function M.stop() end

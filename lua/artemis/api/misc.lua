@@ -190,9 +190,13 @@ return function(A)
 
   local function to_nvim_hl(d)
     local out = {}
+    local colors = require('artemis.core.colors')
     local function color(c)
-      if type(c) == 'string' and c:match('^#%x%x%x%x%x%x$') then
-        return tonumber(c:sub(2), 16)
+      if type(c) == 'string' then
+        if c:match('^#%x%x%x%x%x%x$') then
+          return tonumber(c:sub(2), 16)
+        end
+        return colors[c:lower()]
       end
       return c
     end
@@ -229,6 +233,28 @@ return function(A)
       all[d.name] = to_nvim_hl(d)
     end
     return all
+  end
+
+  local function by_name(name, rgb)
+    local hl = A.nvim_get_hl(0, { name = name, link = false })
+    if next(hl) == nil and F.hlexists(name) == 0 then
+      error('Invalid highlight name: ' .. name, 3)
+    end
+    local out = {}
+    for k, v in pairs(hl) do
+      if k == 'fg' then out.foreground = v
+      elseif k == 'bg' then out.background = v
+      elseif k == 'sp' then out.special = v
+      elseif v == true then out[k] = true
+      end
+    end
+    return out
+  end
+  function A.nvim_get_hl_by_name(name, rgb)
+    return by_name(name, rgb)
+  end
+  function A.nvim_get_hl_by_id(id, rgb)
+    return by_name(F.synIDattr(id, 'name'), rgb)
   end
 
   function A.nvim_list_uis()

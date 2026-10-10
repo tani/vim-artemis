@@ -74,12 +74,15 @@ return function(A)
     if name:match('^#%x%x%x%x%x%x$') then
       return tonumber(name:sub(2), 16)
     end
-    local basic = {
-      black = 0x000000, white = 0xffffff, red = 0xff0000, green = 0x008000, blue = 0x0000ff,
-      yellow = 0xffff00, cyan = 0x00ffff, magenta = 0xff00ff, gray = 0x808080, grey = 0x808080,
-      orange = 0xffa500, purple = 0x800080, brown = 0xa52a2a, pink = 0xffc0cb,
-    }
-    return basic[name:lower()] or -1
+    return require('artemis.core.colors')[name:lower()] or -1
+  end
+
+  function A.nvim_get_color_map()
+    local out = {}
+    for k, v in pairs(require('artemis.core.colors')) do
+      out[k] = v
+    end
+    return out
   end
 
   -- buffer change notifications on top of listener_add()

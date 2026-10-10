@@ -21,6 +21,45 @@ M.F = setmetatable({}, {
 })
 local F = M.F
 
+-- Vim refuses scoped variables whose names are not identifiers (e.g.
+-- b:["nvim-autopairs"]); Neovim allows them through the API. Such keys are
+-- kept in a Lua-side shadow table, keyed by scope ("g", "b:3", "w:1001", "t:1").
+local shadow = {}
+local function valid_name(name)
+  return name:match('^[%a_][%w_]*$') ~= nil
+end
+
+--- Set `name` in the variable dictionary `dictref` (a g:/b:/w:/t: reference).
+function M.setvar_dict(dictref, name, value, scope)
+  if not valid_name(name) then
+    shadow[scope] = shadow[scope] or {}
+    shadow[scope][name] = { value }
+    return
+  end
+  local d = vim.dict()
+  d[name] = convert.to_vim(value)
+  host.call('extend', dictref, d)
+end
+
+function M.delvar_dict(dictref, name, scope)
+  if shadow[scope] and shadow[scope][name] then
+    shadow[scope][name] = nil
+    return
+  end
+  if host.call('has_key', dictref, name) == 1 then
+    host.call('remove', dictref, name)
+  end
+end
+
+--- Look a shadowed variable up; returns found, value.
+function M.shadow_get(scope, name)
+  local rec = shadow[scope] and shadow[scope][name]
+  if rec then
+    return true, rec[1]
+  end
+  return false
+end
+
 function M.vstr(s)
   return "'" .. tostring(s):gsub("'", "''") .. "'"
 end

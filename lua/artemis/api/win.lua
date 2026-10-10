@@ -157,6 +157,10 @@ return function(A)
   end
 
   function A.nvim_win_get_var(w, name)
+    local found, sv = u.shadow_get('w:' .. u.win(w), name)
+    if found then
+      return sv
+    end
     local v = F.getwinvar(u.win(w), name, MISSING)
     if v == MISSING then
       error('Key not found: ' .. name, 2)
@@ -165,11 +169,13 @@ return function(A)
   end
 
   function A.nvim_win_set_var(w, name, value)
-    F.setwinvar(u.win(w), name, value)
+    local w_ = u.win(w)
+    u.setvar_dict(host.call('getwinvar', w_, ''), name, value, 'w:' .. w_)
   end
 
   function A.nvim_win_del_var(w, name)
-    host.exec(string.format('call remove(getwinvar(%d, ""), %s)', u.win(w), u.vstr(name)))
+    local w_ = u.win(w)
+    u.delvar_dict(host.call('getwinvar', w_, ''), name, 'w:' .. w_)
   end
 
   function A.nvim_win_get_option(w, name)

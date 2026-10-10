@@ -9,6 +9,7 @@ function M.setup()
     return
   end
   M._done = true
+  require('artemis.core.luacompat').install()
   require('artemis.core.stdlib').setup()
   require('artemis.core.editor').setup()
 end

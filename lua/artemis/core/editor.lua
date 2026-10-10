@@ -36,6 +36,23 @@ local fn_shims = {
   end,
 }
 
+-- Emulated Neovim version for has('nvim-X.Y.Z') queries (the vendored runtime).
+local NVIM_EMU = { 0, 10, 4 }
+
+local function has_nvim_version(feature)
+  local a, b, c = feature:match('^nvim%-(%d+)%.(%d+)%.?(%d*)$')
+  if not a then
+    return nil
+  end
+  local want = { tonumber(a), tonumber(b), tonumber(c) or 0 }
+  for i = 1, 3 do
+    if want[i] ~= NVIM_EMU[i] then
+      return want[i] < NVIM_EMU[i] and 1 or 0
+    end
+  end
+  return 1
+end
+
 local function job_shims()
   local job = require('artemis.core.job')
   fn_shims.jobstart = job.jobstart
@@ -57,6 +74,12 @@ local function make_fn()
         f = function(...)
           local n = select('#', ...)
           local args = { ... }
+          if name == 'has' and type(args[1]) == 'string' then
+            local v = has_nvim_version(args[1])
+            if v then
+              return v
+            end
+          end
           for i = 1, n do
             args[i] = convert.to_vim(args[i])
           end
@@ -114,12 +137,16 @@ end
 local function install_vars()
   local native_g = vim.g
   vim.g = var_accessor(function(k)
+    local found, sv = u.shadow_get('g', k)
+    if found then
+      return sv
+    end
     return convert.from_vim(host.eval(string.format('get(g:, %s, %s)', vstr(k), vstr(MISSING))))
   end, function(k, v)
     if v == nil then
-      host.exec('unlet! g:' .. k)
+      u.delvar_dict(host.eval('g:'), k, 'g')
     else
-      native_g[k] = convert.to_vim(v)
+      u.setvar_dict(host.eval('g:'), k, v, 'g')
     end
   end)
 
@@ -144,32 +171,63 @@ local function install_vars()
     end
   end
 
+  local function bufid(h)
+    return h == 0 and F.bufnr('%') or h
+  end
+  local function winid(h)
+    return h == 0 and F.win_getid() or h
+  end
+  local function tabid(h)
+    return h == 0 and F.tabpagenr() or h
+  end
+
   vim.b = scoped(function(h, k)
-    return F.getbufvar(h == 0 and '%' or h, k, MISSING)
+    h = bufid(h)
+    local found, sv = u.shadow_get('b:' .. h, k)
+    if found then
+      return sv
+    end
+    return F.getbufvar(h, k, MISSING)
   end, setvar(function(h, k, v)
-    F.setbufvar(h == 0 and '%' or h, k, v)
+    h = bufid(h)
+    u.setvar_dict(host.call('getbufvar', h, ''), k, v, 'b:' .. h)
   end, function(h, k)
-    host.exec(string.format('silent! call remove(getbufvar(%s, ""), %s)', h == 0 and '"%"' or h, vstr(k)))
+    h = bufid(h)
+    u.delvar_dict(host.call('getbufvar', h, ''), k, 'b:' .. h)
   end), function()
     return 0
   end)
 
   vim.w = scoped(function(h, k)
+    h = winid(h)
+    local found, sv = u.shadow_get('w:' .. h, k)
+    if found then
+      return sv
+    end
     return F.getwinvar(h, k, MISSING)
   end, setvar(function(h, k, v)
-    F.setwinvar(h, k, v)
+    h = winid(h)
+    u.setvar_dict(host.call('getwinvar', h, ''), k, v, 'w:' .. h)
   end, function(h, k)
-    host.exec(string.format('silent! call remove(getwinvar(%d, ""), %s)', h, vstr(k)))
+    h = winid(h)
+    u.delvar_dict(host.call('getwinvar', h, ''), k, 'w:' .. h)
   end), function()
     return 0
   end)
 
   vim.t = scoped(function(h, k)
-    return F.gettabvar(h == 0 and F.tabpagenr() or h, k, MISSING)
+    h = tabid(h)
+    local found, sv = u.shadow_get('t:' .. h, k)
+    if found then
+      return sv
+    end
+    return F.gettabvar(h, k, MISSING)
   end, setvar(function(h, k, v)
-    F.settabvar(h == 0 and F.tabpagenr() or h, k, v)
+    h = tabid(h)
+    u.setvar_dict(host.call('gettabvar', h, ''), k, v, 't:' .. h)
   end, function(h, k)
-    host.exec(string.format('silent! call remove(gettabvar(%d, ""), %s)', h == 0 and F.tabpagenr() or h, vstr(k)))
+    h = tabid(h)
+    u.delvar_dict(host.call('gettabvar', h, ''), k, 't:' .. h)
   end), function()
     return 0
   end)
@@ -392,10 +450,13 @@ function M.setup()
   vim.loop = vim.uv
   vim.system = require('artemis.core.job').system
   vim.fs = require('artemis.vendor.nvim.fs')
+  vim.filetype = require('artemis.core.filetype')
+  package.preload['vim.filetype'] = function() return vim.filetype end
   install_vars()
   install_cmd()
   install_misc()
   require('artemis.core.stubs').setup()
+  require('artemis.core.hlgroups').setup()
   -- Neovim's own pure-Lua implementations on top of vim.api.
   require('artemis.vendor.nvim._options')
   vim.keymap = require('artemis.vendor.nvim.keymap')

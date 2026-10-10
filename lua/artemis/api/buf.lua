@@ -160,9 +160,9 @@ return function(A)
     if b == cur then
       host.exec('noautocmd file ' .. F.fnameescape(name))
     else
-      host.exec('noautocmd keepalt keepjumps buffer ' .. b)
+      host.exec('noautocmd keepalt keepjumps buffer! ' .. b)
       local ok, e = pcall(host.exec, 'noautocmd file ' .. F.fnameescape(name))
-      host.exec('noautocmd keepalt keepjumps buffer ' .. cur)
+      host.exec('noautocmd keepalt keepjumps buffer! ' .. cur)
       if not ok then
         error(e, 0)
       end
@@ -205,9 +205,9 @@ return function(A)
     if #wins > 0 then
       return u.in_win(wins[1], fn)
     end
-    host.exec('noautocmd keepalt keepjumps buffer ' .. b)
+    host.exec('noautocmd keepalt keepjumps buffer! ' .. b)
     local ok, res = pcall(fn)
-    host.exec('noautocmd keepalt keepjumps buffer ' .. cur)
+    host.exec('noautocmd keepalt keepjumps buffer! ' .. cur)
     if not ok then
       error(res, 0)
     end
@@ -222,6 +222,10 @@ return function(A)
 
   function A.nvim_buf_get_var(b, name)
     local b_ = u.buf(b)
+    local found, sv = u.shadow_get('b:' .. b_, name)
+    if found then
+      return sv
+    end
     local v = F.getbufvar(b_, name, MISSING)
     if v == MISSING then
       error('Key not found: ' .. name, 2)
@@ -230,11 +234,13 @@ return function(A)
   end
 
   function A.nvim_buf_set_var(b, name, value)
-    F.setbufvar(u.buf(b), name, value)
+    local b_ = u.buf(b)
+    u.setvar_dict(host.call('getbufvar', b_, ''), name, value, 'b:' .. b_)
   end
 
   function A.nvim_buf_del_var(b, name)
-    host.exec(string.format('call remove(getbufvar(%d, ""), %s)', u.buf(b), u.vstr(name)))
+    local b_ = u.buf(b)
+    u.delvar_dict(host.call('getbufvar', b_, ''), name, 'b:' .. b_)
   end
 
   function A.nvim_buf_get_option(b, name)

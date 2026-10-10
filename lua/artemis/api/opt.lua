@@ -160,7 +160,7 @@ local function set(name, value, opts)
 end
 
 local function check_var(name)
-  if type(name) ~= 'string' or not name:match('^[%w_#:]+$') then
+  if type(name) ~= 'string' or name == '' then
     error('Invalid key: ' .. tostring(name), 3)
   end
 end
@@ -185,6 +185,10 @@ return function(A)
   local function getvar(scope)
     return function(name)
       check_var(name)
+      local found, sv = u.shadow_get(scope, name)
+      if found then
+        return sv
+      end
       if not truthy(host.eval('exists("' .. scope .. ':' .. name .. '")')) then
         error('Key not found: ' .. name, 2)
       end
@@ -196,8 +200,7 @@ return function(A)
 
   function A.nvim_set_var(name, value)
     check_var(name)
-    vim.g.ArtemisVarval = convert.to_vim(value)
-    host.exec('let g:' .. name .. ' = g:ArtemisVarval')
+    u.setvar_dict(host.eval('g:'), name, value, 'g')
   end
 
   function A.nvim_set_vvar(name, value)
@@ -208,10 +211,14 @@ return function(A)
 
   function A.nvim_del_var(name)
     check_var(name)
-    host.exec('unlet! g:' .. name)
+    u.delvar_dict(host.eval('g:'), name, 'g')
   end
 
   function A.nvim_tabpage_get_var(t, name)
+    local found, sv = u.shadow_get('t:' .. u.tab(t), name)
+    if found then
+      return sv
+    end
     local v = F.gettabvar(u.tab(t), name, MISSING)
     if v == MISSING then
       error('Key not found: ' .. name, 2)
@@ -219,9 +226,11 @@ return function(A)
     return v
   end
   function A.nvim_tabpage_set_var(t, name, value)
-    F.settabvar(u.tab(t), name, value)
+    local t_ = u.tab(t)
+    u.setvar_dict(host.call('gettabvar', t_, ''), name, value, 't:' .. t_)
   end
   function A.nvim_tabpage_del_var(t, name)
-    host.exec(string.format('call remove(gettabvar(%d, ""), %s)', u.tab(t), u.vstr(name)))
+    local t_ = u.tab(t)
+    u.delvar_dict(host.call('gettabvar', t_, ''), name, 't:' .. t_)
   end
 end
