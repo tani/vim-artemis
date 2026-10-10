@@ -45,12 +45,17 @@ function M.buf(b)
   return b
 end
 
+--- Is `w` a popup window (our emulation of floating windows)?
+function M.is_popup(w)
+  return type(w) == 'number' and w > 0 and F.win_id2win(w) == 0 and F.win_gettype(w) == 'popup'
+end
+
 --- Resolve a window handle (0 = current) and validate it.
 function M.win(w)
   if w == nil or w == 0 then
     return F.win_getid()
   end
-  if F.win_id2win(w) == 0 then
+  if F.win_id2win(w) == 0 and not M.is_popup(w) then
     error('Invalid window id: ' .. tostring(w), 3)
   end
   return w
@@ -96,16 +101,23 @@ function M.norm_range(s, e, n, strict)
   return s, e
 end
 
---- Run `fn` with `win` as the current window (restoring afterwards).
+--- Run `fn` in the context of `win` (works for popups, which cannot be
+--- entered). Uses win_execute(), so no WinEnter/WinLeave autocmds fire.
 function M.in_win(win, fn)
-  local cur = F.win_getid()
-  if win == cur then
+  if win == F.win_getid() then
     return fn()
   end
-  host.exec('noautocmd call win_gotoid(' .. win .. ')')
-  local ok, res = pcall(fn)
-  if F.win_id2win(cur) ~= 0 then
-    host.exec('noautocmd call win_gotoid(' .. cur .. ')')
+  local ok, res
+  local id = require('artemis.core.registry').add(function()
+    ok, res = pcall(fn)
+  end)
+  local called, err = pcall(F.win_execute, win, string.format('lua require("artemis.core.registry").call(%d)', id))
+  require('artemis.core.registry').del(id)
+  if not called then
+    error(err, 0)
+  end
+  if ok == nil then
+    error('Invalid window id: ' .. tostring(win), 2)
   end
   if not ok then
     error(res, 0)

@@ -82,6 +82,9 @@ return function(A)
         return s, 0
       end)
     end
+    if A._after_edit and not A._ext_suspend then
+      A._after_edit()
+    end
   end
 
   function A.nvim_buf_get_text(b, srow, scol, erow, ecol, opts)

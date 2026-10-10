@@ -15,6 +15,11 @@ return function(A)
 
   function A.nvim_set_current_win(w)
     w = u.win(w)
+    if u.is_popup(w) then
+      -- Vim cannot enter popup windows; see api/float.lua.
+      require('artemis.api.float').warn_enter()
+      return
+    end
     if F.win_gotoid(w) == 0 then
       error('Failed to switch to window ' .. w, 2)
     end
@@ -25,11 +30,14 @@ return function(A)
     for _, info in ipairs(F.getwininfo()) do
       out[#out + 1] = info.winid
     end
+    for _, id in ipairs(F.popup_list()) do
+      out[#out + 1] = id
+    end
     return out
   end
 
   function A.nvim_win_is_valid(w)
-    return type(w) == 'number' and F.win_id2win(w) > 0
+    return type(w) == 'number' and (F.win_id2win(w) > 0 or u.is_popup(w))
   end
 
   function A.nvim_win_get_buf(w)
@@ -65,13 +73,23 @@ return function(A)
   end
 
   function A.nvim_win_set_height(w, h)
-    u.in_win(u.win(w), function()
+    w = u.win(w)
+    if u.is_popup(w) then
+      F.popup_setoptions(w, { minheight = h, maxheight = h })
+      return
+    end
+    u.in_win(w, function()
       host.exec('resize ' .. h)
     end)
   end
 
   function A.nvim_win_set_width(w, n)
-    u.in_win(u.win(w), function()
+    w = u.win(w)
+    if u.is_popup(w) then
+      F.popup_setoptions(w, { minwidth = n, maxwidth = n })
+      return
+    end
+    u.in_win(w, function()
       host.exec('vertical resize ' .. n)
     end)
   end
@@ -83,20 +101,51 @@ return function(A)
     return { row - 1, col - 1 }
   end
 
+  function A.nvim_win_get_config(w)
+    w = u.win(w)
+    return require('artemis.api.float').get_config(w)
+  end
+
+  function A.nvim_win_set_config(w, cfg)
+    w = u.win(w)
+    return require('artemis.api.float').set_config(w, cfg)
+  end
+
   function A.nvim_win_get_number(w)
     return F.win_id2win(u.win(w))
   end
 
   function A.nvim_win_get_tabpage(w)
     w = u.win(w)
+    if u.is_popup(w) then
+      return F.tabpagenr()
+    end
     return F.win_id2tabwin(w)[1]
+  end
+
+  function A.nvim_open_win(buf, enter, cfg)
+    return require('artemis.api.float').open(A, buf, enter, cfg)
   end
 
   function A.nvim_win_close(w, force)
     w = u.win(w)
-    u.in_win(w, function()
+    if u.is_popup(w) then
+      F.popup_close(w)
+      return
+    end
+    local cur = F.win_getid()
+    if w == cur then
       host.exec(force and 'close!' or 'close')
-    end)
+      return
+    end
+    F.win_gotoid(w)
+    local ok, err = pcall(host.exec, force and 'close!' or 'close')
+    if F.win_id2win(cur) ~= 0 then
+      F.win_gotoid(cur)
+    end
+    if not ok then
+      error(err, 0)
+    end
   end
 
   function A.nvim_win_hide(w)
