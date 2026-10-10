@@ -1,0 +1,58 @@
+name: test
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+
+jobs:
+  specs:
+    name: specs (${{ matrix.host }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - host: vim
+          - host: nvim-stable
+          - host: nvim-nightly
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Vim (+lua)
+        if: matrix.host == 'vim'
+        run: sudo apt-get update && sudo apt-get install -y vim-nox
+      - name: Install Neovim
+        if: startsWith(matrix.host, 'nvim')
+        uses: rhysd/action-setup-vim@v1
+        with:
+          neovim: true
+          version: ${{ matrix.host == 'nvim-nightly' && 'nightly' || 'stable' }}
+      - name: Run specs
+        run: test/run.sh ${{ startsWith(matrix.host, 'nvim') && 'nvim' || 'vim' }}
+
+  plugins:
+    name: plugins (${{ matrix.host }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        host: [vim, nvim]
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Vim (+lua)
+        if: matrix.host == 'vim'
+        run: sudo apt-get update && sudo apt-get install -y vim-nox
+      - name: Install Neovim
+        if: matrix.host == 'nvim'
+        uses: rhysd/action-setup-vim@v1
+        with:
+          neovim: true
+          version: stable
+      - name: Fetch plugins
+        run: |
+          git clone --depth 1 https://github.com/echasnovski/mini.nvim /tmp/mini.nvim
+      - name: Behaviour checks (mini.nvim)
+        run: |
+          out=$(test/plugins/behavior.sh ${{ matrix.host }} /tmp/mini.nvim)
+          echo "$out"
+          ! echo "$out" | grep -q '^FAIL'

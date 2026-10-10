@@ -18,93 +18,40 @@
 --LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 --OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 --SOFTWARE.
---------------------------------------------------------------------------------
+
+-- artemis v1 API, now a thin layer over the v2 emulation (see docs/design.md).
+-- `require('artemis')` installs the Neovim `vim.*` API into Vim (idempotent)
+-- and exposes the original `artemis.*` names for backward compatibility.
+require('artemis.inject').setup()
 
 local M = {}
 
-local function generate_id()
-  return string.format('%02x', math.floor(os.clock() * 1000000))
-end
-
-M._command = {}
 M.create_command = function(name, callback, opts)
-  if vim.fn.has('nvim') > 0 then
-    return vim.api.nvim_create_user_command(name, callback, opts)
-  end
-  local _callback = callback
-  if type(callback) == 'function' then
-    M._command[name] = callback
-    _callback = 'lua require("artemis")._command["' .. name .. '"]({reg = [=[<reg>]=], bang = [=[<bang>]=] == "!", args = [=[<args>]=], fargs = {<f-args>}, line1 = <line1>, line2 = <line2>, count = <count>, range = <range>, mods = [=[<mods>]=]})'
-  end
-  local args = {}
-  for k, v in pairs(opts) do
-    if k == 'force' then
-      goto continue
-    end
-    if type(v) == 'boolean' then
-      if v then
-        table.insert(args, '-' .. k)
-      end
-    end
-    if type(v) == 'string' then
-      table.insert(args, '-' .. k .. '=' .. v)
-    end
-    ::continue::
-  end
-  table.insert(args, name)
-  table.insert(args, _callback)
-  M.cmd.command { bang = opts.force, args = args }
-end
-
-function with_buffer(bufn, callback)
-  local curr = M.fn.bufnr('.')
-  M.cmd.buffer(bufn)
-  local result = callback()
-  M.cmd.buffer(curr)
-  return result
+  return vim.api.nvim_create_user_command(name, callback, opts or {})
 end
 
 M.create_buf_command = function(bufn, name, callback, opts)
-  if vim.fn.has('nvim') > 0 then
-    return vim.api.nvim_buf_create_user_command(bufn, name, callback, opts)
-  end
-  local _callback = callback
-  if type(callback) == 'function' then
-    M._command[name] = callback
-    _callback = 'lua require("artemis")._command["' .. name .. '"]({reg = [=[<reg>]=], bang = [=[<bang>]=] == "!", args = [=[<args>]=], fargs = {<f-args>}, line1 = <line1>, line2 = <line2>, count = <count>, range = <range>, mods = [=[<mods>]=]})'
-  end
-  local args = { '-buffer' }
-  for k, v in pairs(opts) do
-    if k == 'force' then
-      goto continue
-    end
-    if type(v) == 'boolean' then
-      if v then
-        table.insert(args, '-' .. k)
-      end
-    end
-    if type(v) == 'string' then
-      table.insert(args, '-' .. k .. '=' .. v)
-    end
-    ::continue::
-  end
-  table.insert(args, name)
-  table.insert(args, _callback)
-  with_buffer(bufn, function()
-    M.cmd.command { bang = opts.force, args = args }
-  end)
+  return vim.api.nvim_buf_create_user_command(bufn, name, callback, opts or {})
 end
 
 M.delete_command = function(name)
-  if vim.fn.has('nvim') > 0 then
-    return vim.api.nvim_del_user_command(name)
-  end
-  M.cmd.delcommand(name)
+  return vim.api.nvim_del_user_command(name)
 end
 
+M.create_augroup = function(name, opts)
+  return vim.api.nvim_create_augroup(name, opts or {})
+end
+
+M.create_autocmd = function(event, opts)
+  return vim.api.nvim_create_autocmd(event, opts)
+end
+
+M.keymap = vim.keymap
+
+-- dict / list / blob / cast ---------------------------------------------------
 M.dict = type(vim.dict) == 'function' and vim.dict or function(x) return x end
 M.list = type(vim.list) == 'function' and vim.list or function(x) return x end
-M.blob = type(vim.dict) == 'function' and vim.blob or function(x) return x end
+M.blob = type(vim.blob) == 'function' and vim.blob or function(x) return x end
 function M.cast(t)
   if type(t) ~= 'table' then
     return t
@@ -117,423 +64,90 @@ function M.cast(t)
   return assocp and M.dict(t) or M.list(t)
 end
 
-M._augroup = {}
-function M.create_augroup(name, opts)
-  if vim.fn.has('nvim') > 0 then
-    return vim.api.nvim_create_augroup(name, opts)
-  end
-  local id = generate_id()
-  opts = opts or {}
-  if opts.clear then
-    vim.command('augroup ' .. name .. ' | autocmd! | augroup END')
-  else
-    vim.command('augroup ' .. name .. ' | augroup END')
-  end
-  M._augroup[id] = name
-  return id
-end
-
-M._autocmd = {}
-function M.create_autocmd(event, opts)
-  if vim.fn.has('nvim') > 0 then
-    return vim.api.nvim_create_autocmd(event, opts)
-  end
-  local id = generate_id()
-  if type(opts.group) == 'number' then
-    opts.group = M._augroup[opts.group]
-  end
-  if opts.buffer then
-    opts.bufnr = opts.buffer
-  end
-  opts.event = event
-  opts.cmd = opts.command
-  if opts.callback then
-    local callback = opts.callback
-    opts.callback = nil
-    if type(callback) == 'function' then
-      M._autocmd[id] = function()
-        local arg = {
-          id = id,
-          event = opts.event,
-          group = opts.group,
-          buf = vim.fn.expand('<abuf>'),
-          file = vim.fn.expand('<afile>'),
-          match = vim.fn.expand('<amatch>'),
-        }
-        callback(arg)
-      end
-      opts.cmd = 'lua require("artemis")._autocmd["' .. id .. '"]()'
-    else
-      M._autocmd[id] = function()
-        local arg = {
-          id = id,
-          event = opts.event,
-          group = opts.group,
-          buf = vim.fn.expand('<abuf>'),
-          file = vim.fn.expand('<afile>'),
-          match = vim.fn.expand('<amatch>'),
-        }
-        vim.fn[callback](arg)
-      end
-      opts.cmd = 'lua require("artemis")._autocmd["' .. id .. '"]()'
-    end
-  end
-  M.fn.autocmd_add({opts})
-  return id
-end
-
-M._keymap = {}
-local function keymap_del(modes, lhs, opts)
-  opts = opts or {}
-  for _, mode in pairs(type(modes) == 'table' and modes or { modes }) do
-    local cmd = mode .. 'unmap'
-    local args = {}
-    if opts.buffer then
-      table.insert(args, '<buffer>')
-    end
-    table.insert(args, lhs)
-    M.cmd({cmd = cmd, args = args})
-  end
-end
-local function keymap_set(modes, lhs, rhs, opts)
-  opts = opts or {}
-  for _, mode in pairs(type(modes) == 'table' and modes or { modes }) do
-    local cmd = mode
-    if not opts.remap or opts.noremap then
-      cmd = cmd .. 'nore'
-    end
-    cmd = cmd .. 'map'
-    local args = {}
-    for _, opt in pairs({ 'buffer', 'expr', 'nowait', 'silent', 'unique' }) do
-      if opts[opt] then
-        table.insert(args, '<' .. opt .. '>')
-      end
-    end
-    table.insert(args, lhs)
-    if type(rhs) == 'function' then
-      local expr = 'require"artemis"._keymap[ [=[' .. lhs .. ']=] ]()'
-      if opts.expr then
-        -- insert expr to `lueavel` argument.
-        -- so escape single quote at vim style
-        -- see `:h expr-'`
-        expr = expr:gsub("'", "''")
-        table.insert(args, string.format("luaeval('%s')", expr))
-      else
-        table.insert(args, string.format('<Cmd>lua %s<CR>', expr))
-      end
-      M._keymap[lhs] = rhs
-    else
-      table.insert(args, rhs)
-    end
-    M.cmd({cmd = cmd, args = args})
-  end
-end
-M.keymap = vim.keymap or {
-  del = keymap_del,
-  set = keymap_set
-}
-
-local vars = setmetatable({}, {
-  __index = function(_, scope)
-    return setmetatable({__name = ''}, {
-      __newindex = function(var, name, value)
-        M.cmd( 'let ' .. scope .. ':' .. var.__name .. '["' .. name .. '"]' .. ' = ' .. vim.fn.string(M.cast(value)) )
-      end,
-      __index = function(var, name)
-        local expr = scope .. ':' .. var.__name .. '["' .. name .. '"]'
-        local err, val = pcall(M.eval, expr)
-        if type(val) == 'table' then
-          val.__name = var.__name .. '["' .. name .. '"]'
-          setmetatable(val, getmetatable(var))
+-- variables -------------------------------------------------------------------
+-- Unlike `vim.g`, artemis variables write nested assignments through:
+--   artemis.g.lightline.colorscheme = 'x'
+local function nested(root_get, root_set, path)
+  return setmetatable({}, {
+    __index = function(_, key)
+      local value = path[1] == nil and root_get(key) or nil
+      if path[1] ~= nil then
+        value = root_get(path[1])
+        for i = 2, #path do
+          value = type(value) == 'table' and value[path[i]] or nil
         end
-        return val
+        value = type(value) == 'table' and value[key] or nil
       end
-    })
-  end
-})
-
-local function tbl_islist(tbl)
-  if vim.fn.has('nvim') > 0 then
-    return vim.tbl_islist(tbl)
-  end
-  if type(tbl) ~= 'table' then
-    return false
-  end
-  local idx = 1
-  for k, _ in pairs(tbl) do
-    if type(k) ~= 'number' then
-      return false
-    end
-    if k ~= idx then
-      return false
-    end
-    idx = idx + 1
-  end
-  return true
-end
-
-local function encode_opt(tbl)
-  if type(tbl) == 'table' then
-    if tbl_islist(tbl) then
-      return table.concat(tbl, ',')
-    end
-    local dict = {}
-    for k, v in pairs(tbl) do
-      if type(v) ~= 'string' then
-        print('value of key ' .. k .. ' is not string')
-        return ''
-      end
-      if type(k) == 'number' then
-        table.insert(dict, v)
-      else
-        table.insert(dict, k .. ':' .. v)
-      end
-    end
-    return table.concat(dict, ',')
-  else
-    return tbl
-  end
-end
-
-local function decode_opt(str)
-  if type(str) ~= 'string' then
-    return str
-  end
-  if not str:match('[,:]') then
-    return str
-  end
-  local tbl = vim.split(str, ',')
-  local idx = 1
-  local dict = {}
-  for _, v in pairs(tbl) do
-    local kv = vim.split(v, ':')
-    if #kv == 1 then
-      dict[idx] = kv[1]
-      idx = idx + 1
-    else
-      dict[kv[1]] = kv[2]
-    end
-  end
-  return dict
-end
-
-local function create_append(self, key)
-  return function(new_value)
-    local value = self[key]
-    if type(value) ~= 'table' or type(new_value) ~= 'table' then
-      print('value of key ' .. key .. ' is not table')
-      return
-    end
-    if M.fn.empty(self[key]) then
-      self[key] = new_value
-    else
-      -- merge value and new_value
-      for k, v in pairs(new_value) do
-        if type(k) == 'number' then
-          table.insert(value, v)
-        else
-          value[k] = v
+      if type(value) == 'table' then
+        local p = { unpack(path) }
+        p[#p + 1] = key
+        if #path == 0 then
+          p = { key }
         end
+        return nested(root_get, root_set, p)
       end
-      self[key] = value
-    end
-    return self[key]
-  end
+      return value
+    end,
+    __newindex = function(_, key, value)
+      if #path == 0 then
+        root_set(key, value)
+        return
+      end
+      local root = root_get(path[1])
+      local node = root
+      for i = 2, #path do
+        node = node[path[i]]
+      end
+      node[key] = value
+      root_set(path[1], root)
+    end,
+  })
 end
 
-local function create_prepend(self, key)
-  return function(new_value)
-    local value = self[key]
-    if type(value) ~= 'table' or type(new_value) ~= 'table' then
-      print('value of key ' .. key .. ' is not table')
-      return
-    end
-    if M.fn.empty(self[key]) then
-      self[key] = new_value
-    else
-      -- merge value and new_value
-      for k, v in pairs(new_value) do
-        if type(k) == 'number' then
-          table.insert(value, 1, v)
-        else
-          value[k] = v
-        end
-      end
-      self[key] = value
-    end
-    return self[key]
-  end
+local function var_scope(scope)
+  return nested(function(k)
+    return scope[k]
+  end, function(k, v)
+    scope[k] = v
+  end, {})
 end
 
-local function create_remove(self, key)
-  return function(new_value)
-    local value = self[key]
-    if type(value) ~= 'table' or type(new_value) ~= 'table' then
-      print('value of key ' .. key .. ' is not table')
-      return
-    end
-    if not M.fn.empty(self[key]) then
-      local tbl = vim.split(value, ',')
-      local new_tbl = {}
-      for _, v in pairs(tbl) do
-        if type(new_value) ~= 'table' then
-          new_value = { new_value }
-        end
-        local found = false
-        for _, nv in pairs(new_value) do
-          if v == nv then
-            found = true
-            break
-          end
-        end
-        if not found then
-          table.insert(new_tbl, v)
-        end
-      end
-      self[key] = table.concat(new_tbl, ',')
-    end
-    return self[key]
-  end
+M.g = var_scope(vim.g)
+M.b = var_scope(vim.b)
+M.w = var_scope(vim.w)
+M.t = var_scope(vim.t)
+M.v = var_scope(vim.v)
+
+-- options ---------------------------------------------------------------------
+M.o = vim.o
+M.bo = vim.bo
+M.go = vim.go
+M.opt = vim.opt
+M.opt_local = vim.opt_local
+M.opt_global = vim.opt_global
+
+-- functions / eval / cmd --------------------------------------------------------
+-- fn proxies arguments via cast; dots chain into `#` (autoload names):
+--   artemis.fn.lexima.add_rule { ... }  ==  vim.fn['lexima#add_rule']
+local function fn_proxy(name)
+  return setmetatable({}, {
+    __call = function(_, ...)
+      return vim.fn[name](...)
+    end,
+    __index = function(_, sub)
+      return fn_proxy(name .. '#' .. sub)
+    end,
+  })
 end
-
-local vars_o = setmetatable({}, {
-  __index = function(_, name)
-    return M.eval('&' .. name)
-  end,
-  __newindex = function(_, name, value)
-    M.cmd('let &' .. name .. ' = ' .. M.fn.string(M.cast(value)))
-  end
-})
-
-local vars_opt = setmetatable({}, {
-  __index = function(self, name)
-    local ret = decode_opt(M.eval('&' .. name))
-    if type(ret) == 'table' then
-      ret.append = create_append(self, name)
-      ret.prepend = create_prepend(self, name)
-      ret.remove = create_remove(self, name)
-    end
-    return ret
-  end,
-  __newindex = function(_, name, value)
-    M.cmd('let &' .. name .. ' = ' .. M.fn.string(encode_opt(value)))
-  end
-})
-
-local vars_bo = setmetatable({}, {
-  __index = function(_, name)
-    return M.eval('&l:' .. name)
-  end,
-  __newindex = function(_, name, value)
-    M.cmd('let &l:' .. name .. ' = ' .. M.fn.string(value))
-  end
-})
-
-local vars_opt_local = setmetatable({}, {
-  __index = function(self, name)
-    local ret = decode_opt(M.eval('&l:' .. name))
-    if type(ret) == 'table' then
-      ret.append = create_append(self, name)
-      ret.prepend = create_prepend(self, name)
-      ret.remove = create_remove(self, name)
-    end
-    return ret
-  end,
-  __newindex = function(_, name, value)
-    M.cmd('let &l:' .. name .. ' = ' .. M.fn.string(encode_opt(value)))
-  end
-})
-
-local vars_go = setmetatable({}, {
-  __index = function(_, name)
-    return M.eval('&g:' .. name)
-  end,
-  __newindex = function(_, name, value)
-    M.cmd('let &g:' .. name.. ' = ' .. M.fn.string(value))
-  end
-})
-
-local vars_opt_global = setmetatable({}, {
-  __index = function(self, name)
-    local ret = decode_opt(M.eval('&g:' .. name))
-    if type(ret) == 'table' then
-      ret.append = create_append(self, name)
-      ret.prepend = create_prepend(self, name)
-      ret.remove = create_remove(self, name)
-    end
-    return ret
-  end,
-  __newindex = function(_, name, value)
-    M.cmd('let &g:' .. name .. ' = ' .. M.fn.string(encode_opt(value)))
-  end
-})
-
-M.g = vars.g
-M.t = vars.t
-M.b = vars.b
-M.v = vars.v
-M.w = vars.w
-M.o = vars_o
-M.bo = vars_bo
-M.go = vars_go
-
-M.opt = vars_opt
-M.opt_local = vars_opt_local
-M.opt_global = vars_opt_global
-
 M.fn = setmetatable({}, {
   __index = function(_, name)
-    return setmetatable({name = name}, {
-      __call = function(fn, ...)
-        local args = {}
-        for _, arg in ipairs({...}) do
-          table.insert(args, M.cast(arg))
-        end
-        local unpack = unpack or table.unpack
-        return vim.fn[fn.name](unpack(args))
-      end,
-      __index = function(fn, subname)
-        return setmetatable(
-          { name = fn.name .. '#' .. subname },
-          getmetatable(fn)
-        )
-      end
-    })
-  end
+    return fn_proxy(name)
+  end,
 })
 
-M.eval = vim.eval or vim.api.nvim_eval
-M.cmd = vim.cmd or setmetatable({}, {
-  __call = function(cmd, t)
-    if type(t) == 'table' then
-      local c = t.cmd or t[1]
-      if t.bang then
-        c = c .. '!'
-      end
-      for i, arg in ipairs(t) do
-        if i > 1 then
-          c = c .. ' ' .. arg
-        end
-      end
-      for _, arg in pairs(t.args or {}) do
-        c = c .. ' ' .. arg
-      end
-      return cmd(c)
-    end
-    return vim.command(t)
-  end,
-  __index = function(cmd, name)
-    return function(t)
-      if type(t) == 'table' then
-        local u = { cmd = name }
-        for k, v in pairs(t) do
-          u[k] = v
-        end
-        return cmd(u)
-      end
-      return vim.command(name .. ' ' .. t)
-    end
-  end
-})
+M.eval = function(expr)
+  return vim.api.nvim_eval(expr)
+end
+M.cmd = vim.cmd
 
 return M
