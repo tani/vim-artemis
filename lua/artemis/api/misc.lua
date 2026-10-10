@@ -285,6 +285,9 @@ return function(A)
       if type(c) == 'number' then
         return string.format('#%06x', c)
       end
+      if type(c) == 'string' and c:lower() == 'none' then
+        return 'NONE'
+      end
       return c
     end
     if val.fg then def.guifg = color(val.fg) end

@@ -117,8 +117,21 @@ else
   -- `:execute` inside a one-line :try; the exception text is read back from
   -- a variable. (A multi-line try block would let `:command` etc. swallow the
   -- following lines.) Runs at global scope so plain `:let x` stays global.
+  -- Neovim accepts `guifg=None`; Vim only knows NONE.
+  local function fix_highlight(cmd)
+    if not cmd:match('^%s*hi') then
+      return cmd
+    end
+    return (cmd:gsub('(%f[%w][%w_]+=)[Nn][Oo][Nn][Ee]%f[%W]', function(key)
+      local name = key:sub(1, -2):lower()
+      if name:match('^gui') or name:match('^cterm') or name == 'term' then
+        return key .. 'NONE'
+      end
+    end))
+  end
+
   function M.exec(cmd)
-    g.__artemis_cmd = vlua.rewrite(cmd)
+    g.__artemis_cmd = fix_highlight(vlua.rewrite(cmd))
     g.__artemis_exc = ''
     local out = vcall(
       'execute',

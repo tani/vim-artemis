@@ -478,7 +478,60 @@ function M.spawn(path, opts, on_exit)
 end
 
 -- Features we cannot offer fail loudly instead of silently.
-for _, name in ipairs({ 'new_tcp', 'new_udp', 'new_fs_event', 'new_fs_poll', 'new_signal', 'new_tty' }) do
+-- fs_event / fs_poll: emulated by polling mtime/size once per second.
+local function poll_handle(kind)
+  local h = { _closed = false }
+  function h:start(path, a, b)
+    local cb = type(a) == 'function' and a or b
+    self:stop()
+    self._path = path
+    local function sig()
+      return F.getftime(path) .. ':' .. F.getfsize(path) .. ':' .. F.getftype(path)
+    end
+    self._sig = sig()
+    self._id = F.timer_start(1000, function()
+      if self._closed then
+        return
+      end
+      local now = sig()
+      if now ~= self._sig then
+        self._sig = now
+        if kind == 'event' then
+          cb(nil, path:match('[^/]+$') or path, { change = true })
+        else
+          cb(nil, {}, {})
+        end
+      end
+    end, { ['repeat'] = -1 })
+    return 0
+  end
+  function h:stop()
+    if self._id then
+      F.timer_stop(self._id)
+      self._id = nil
+    end
+    return 0
+  end
+  function h:close()
+    self:stop()
+    self._closed = true
+  end
+  function h:is_closing()
+    return self._closed
+  end
+  function h:getpath()
+    return self._path
+  end
+  return h
+end
+function M.new_fs_event()
+  return poll_handle('event')
+end
+function M.new_fs_poll()
+  return poll_handle('poll')
+end
+
+for _, name in ipairs({ 'new_tcp', 'new_udp', 'new_signal', 'new_tty' }) do
   M[name] = function()
     error('artemis: vim.uv.' .. name .. ' is not supported on Vim', 2)
   end
